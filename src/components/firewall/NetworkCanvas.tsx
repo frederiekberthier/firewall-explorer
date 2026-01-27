@@ -3,7 +3,7 @@ import { NetworkNode, Connection, SimulationPacket } from '@/types/firewall';
 import { NetworkNodeComponent } from './NetworkNode';
 import { ConnectionLine } from './ConnectionLine';
 import { Button } from '@/components/ui/button';
-import { ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Move } from 'lucide-react';
 
 interface NetworkCanvasProps {
   nodes: NetworkNode[];
@@ -30,6 +30,9 @@ export function NetworkCanvas({
 }: NetworkCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [dragState, setDragState] = useState<{
     nodeId: string;
     startX: number;
@@ -40,7 +43,10 @@ export function NetworkCanvas({
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.25, 2));
   const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.25, 0.25));
-  const handleZoomReset = () => setZoom(1);
+  const handleZoomReset = () => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  };
 
   const handleDragStart = useCallback((nodeId: string, e: React.MouseEvent) => {
     if (!isEditable) return;
@@ -57,19 +63,36 @@ export function NetworkCanvas({
   }, [nodes, isEditable]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (isPanning) {
+      const dx = e.clientX - panStart.x;
+      const dy = e.clientY - panStart.y;
+      setPan(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+      setPanStart({ x: e.clientX, y: e.clientY });
+      return;
+    }
+    
     if (!dragState) return;
     
-    const dx = e.clientX - dragState.startX;
-    const dy = e.clientY - dragState.startY;
+    const dx = (e.clientX - dragState.startX) / zoom;
+    const dy = (e.clientY - dragState.startY) / zoom;
     
     onUpdateNode(dragState.nodeId, {
       x: dragState.nodeStartX + dx,
       y: dragState.nodeStartY + dy
     });
-  }, [dragState, onUpdateNode]);
+  }, [dragState, onUpdateNode, isPanning, panStart, zoom]);
 
   const handleMouseUp = useCallback(() => {
     setDragState(null);
+    setIsPanning(false);
+  }, []);
+
+  const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
+    // Start panning when clicking on empty canvas area
+    if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === 'svg' || (e.target as HTMLElement).tagName === 'rect' || (e.target as HTMLElement).tagName === 'path') {
+      setIsPanning(true);
+      setPanStart({ x: e.clientX, y: e.clientY });
+    }
   }, []);
 
   const getNodeById = (id: string) => nodes.find(n => n.id === id);
@@ -77,8 +100,9 @@ export function NetworkCanvas({
   return (
     <div
       ref={canvasRef}
-      className="relative w-full h-[500px] bg-gradient-to-br from-background to-muted/30 rounded-xl border border-border overflow-hidden"
-      onClick={() => onSelectNode(null)}
+      className={`relative w-full h-[500px] bg-gradient-to-br from-background to-muted/30 rounded-xl border border-border overflow-hidden ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+      onClick={() => !isPanning && onSelectNode(null)}
+      onMouseDown={handleCanvasMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
@@ -111,16 +135,22 @@ export function NetworkCanvas({
           size="icon"
           className="h-8 w-8"
           onClick={(e) => { e.stopPropagation(); handleZoomReset(); }}
-          title="Reset zoom"
+          title="Reset zoom en positie"
         >
           <Maximize2 className="w-4 h-4" />
         </Button>
       </div>
 
-      {/* Zoomable content wrapper */}
+      {/* Pan hint */}
+      <div className="absolute bottom-3 left-3 z-20 flex items-center gap-1.5 bg-card/80 backdrop-blur-sm rounded-lg border border-border px-2 py-1 shadow-sm">
+        <Move className="w-3 h-3 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground">Sleep om te pannen</span>
+      </div>
+
+      {/* Zoomable and pannable content wrapper */}
       <div
-        className="absolute inset-0 origin-center transition-transform duration-200"
-        style={{ transform: `scale(${zoom})` }}
+        className="absolute inset-0 origin-center transition-transform duration-100"
+        style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
       >
         {/* Grid pattern */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none">

@@ -32,18 +32,24 @@ export function useNetworkState() {
       y = 500;
       parentId = ROUTER_ID;
     } else if (type === 'host') {
-      if (selectedNodeId) {
-        const parentNode = nodes.find(n => n.id === selectedNodeId);
-        if (parentNode && (parentNode.type === 'router' || parentNode.type === 'vlan')) {
-          const childCount = nodes.filter(n => n.parentId === selectedNodeId).length;
-          x = parentNode.x + (childCount - 1) * 120;
-          y = parentNode.y + 150;
-          parentId = selectedNodeId;
-        }
+      // Host must be attached to a router or VLAN
+      const parentNode = selectedNodeId ? nodes.find(n => n.id === selectedNodeId) : null;
+      
+      if (parentNode && (parentNode.type === 'router' || parentNode.type === 'vlan')) {
+        // Attach to selected router or VLAN
+        const existingChildren = nodes.filter(n => n.parentId === selectedNodeId).length;
+        // Spread children horizontally around the parent
+        const offset = (existingChildren - Math.floor(existingChildren / 2)) * 120;
+        x = parentNode.x + offset;
+        y = parentNode.y + 150;
+        parentId = selectedNodeId;
       } else {
-        const hostCount = nodes.filter(n => n.type === 'host' && n.parentId === ROUTER_ID).length;
-        x = 600 + hostCount * 120;
-        y = 500;
+        // Fallback: attach directly to the main router
+        const routerNode = nodes.find(n => n.id === ROUTER_ID);
+        const existingChildren = nodes.filter(n => n.parentId === ROUTER_ID && n.type === 'host').length;
+        x = (routerNode?.x || 400) + 150 + existingChildren * 120;
+        y = (routerNode?.y || 300) + 150;
+        parentId = ROUTER_ID;
       }
     }
 

@@ -87,9 +87,10 @@ export function FirewallSimulator() {
         {/* Phase 1: Network building */}
         {phase === 1 && (
           <div className="space-y-4">
-            <NodeToolbar
+          <NodeToolbar
               onAddNode={addNode}
               selectedNodeType={selectedNode?.type || null}
+              selectedNodeName={selectedNode?.name}
             />
             <NetworkCanvas
               nodes={nodes}

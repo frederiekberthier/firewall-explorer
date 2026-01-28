@@ -31,20 +31,29 @@ export function RuleEditor({
   const availableNodes = nodes.filter(n => n.type !== 'router');
 
   const handleAddRule = () => {
-    if (!sourceId || !destinationId || sourceId === destinationId) return;
-    
+    if (!sourceId || !destinationId) return;
+    // Allow same source and destination if one is a wildcard
+    const isWildcard = (id: string) => id.startsWith('ANY');
+    if (sourceId === destinationId && !isWildcard(sourceId)) return;
+
     onAddRule({
       sourceId,
       destinationId,
       connectionType,
       action
     });
-    
+
     setSourceId('');
     setDestinationId('');
   };
 
-  const getNodeName = (id: string) => nodes.find(n => n.id === id)?.name || 'Onbekend';
+  const getNodeName = (id: string) => {
+    if (id === 'ANY') return 'ANY';
+    if (id === 'ANY_VLAN') return 'ANY VLAN';
+    if (id === 'ANY_HOST') return 'ANY HOST';
+    if (id === 'ANY_INTERNET') return 'ANY INTERNET';
+    return nodes.find(n => n.id === id)?.name || 'Onbekend';
+  };
 
   const handleDragStart = (index: number) => {
     setDragIndex(index);
@@ -81,6 +90,7 @@ export function RuleEditor({
                   <SelectValue placeholder="Selecteer..." />
                 </SelectTrigger>
                 <SelectContent className="bg-popover border border-border">
+                  <SelectItem value="ANY_VLAN">ANY VLAN</SelectItem>
                   {availableNodes.map(node => (
                     <SelectItem key={node.id} value={node.id}>
                       {node.name}
@@ -97,6 +107,7 @@ export function RuleEditor({
                   <SelectValue placeholder="Selecteer..." />
                 </SelectTrigger>
                 <SelectContent className="bg-popover border border-border">
+                  <SelectItem value="ANY_VLAN">ANY VLAN</SelectItem>
                   {availableNodes.filter(n => n.id !== sourceId).map(node => (
                     <SelectItem key={node.id} value={node.id}>
                       {node.name}
@@ -135,7 +146,7 @@ export function RuleEditor({
 
           <Button
             onClick={handleAddRule}
-            disabled={!sourceId || !destinationId || sourceId === destinationId}
+            disabled={!sourceId || !destinationId}
             className="w-full"
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -172,7 +183,7 @@ export function RuleEditor({
                   )}
                 >
                   <GripVertical className="w-4 h-4 text-muted-foreground cursor-grab" />
-                  
+
                   <span className="w-6 h-6 flex items-center justify-center bg-muted rounded text-xs font-mono">
                     {index + 1}
                   </span>
@@ -181,15 +192,15 @@ export function RuleEditor({
                     <Badge variant="outline">{getNodeName(rule.sourceId)}</Badge>
                     <ArrowRight className="w-4 h-4 text-muted-foreground" />
                     <Badge variant="outline">{getNodeName(rule.destinationId)}</Badge>
-                    
+
                     <Badge variant="secondary" className="ml-2">
                       {rule.connectionType}
                     </Badge>
-                    
+
                     <Badge
                       className={cn(
-                        rule.action === 'allow' 
-                          ? 'bg-primary/20 text-primary border-primary/30' 
+                        rule.action === 'allow'
+                          ? 'bg-primary/20 text-primary border-primary/30'
                           : 'bg-destructive/20 text-destructive border-destructive/30'
                       )}
                     >

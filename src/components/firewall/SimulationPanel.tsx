@@ -35,21 +35,41 @@ export function SimulationPanel({
   const [phase, setPhase] = useState<'idle' | 'request' | 'checking' | 'response' | 'complete'>('idle');
 
   const availableNodes = nodes.filter(n => n.type !== 'router');
-  const getNodeName = (id: string) => nodes.find(n => n.id === id)?.name || 'Onbekend';
+  const getNodeName = (id: string) => {
+    if (id === 'ANY') return 'ANY';
+    if (id === 'ANY_VLAN') return 'ANY VLAN';
+    if (id === 'ANY_HOST') return 'ANY HOST';
+    if (id === 'ANY_INTERNET') return 'ANY INTERNET';
+    return nodes.find(n => n.id === id)?.name || 'Onbekend';
+  };
+
+  const matchesWildcard = (ruleNodeId: string, packetNodeId: string): boolean => {
+    if (ruleNodeId === packetNodeId) return true;
+    if (ruleNodeId === 'ANY') return true;
+
+    const packetNode = nodes.find(n => n.id === packetNodeId);
+    if (!packetNode) return false;
+
+    if (ruleNodeId === 'ANY_VLAN' && packetNode.type === 'vlan') return true;
+    if (ruleNodeId === 'ANY_HOST' && packetNode.type === 'host') return true;
+    if (ruleNodeId === 'ANY_INTERNET' && packetNode.type === 'internet') return true;
+
+    return false;
+  };
 
   const checkRules = useCallback((srcId: string, dstId: string, isReply: boolean): RuleCheckResult[] => {
     const results: RuleCheckResult[] = [];
-    
+
     for (const rule of rules.sort((a, b) => a.order - b.order)) {
       const srcName = getNodeName(rule.sourceId);
       const dstName = getNodeName(rule.destinationId);
       const packetSrcName = getNodeName(srcId);
       const packetDstName = getNodeName(dstId);
 
-      // Check if rule matches this packet
-      const directMatch = rule.sourceId === srcId && rule.destinationId === dstId;
-      const reverseMatch = rule.sourceId === dstId && rule.destinationId === srcId;
-      
+      // Check if rule matches this packet (with wildcard support)
+      const directMatch = matchesWildcard(rule.sourceId, srcId) && matchesWildcard(rule.destinationId, dstId);
+      const reverseMatch = matchesWildcard(rule.sourceId, dstId) && matchesWildcard(rule.destinationId, srcId);
+
       if (directMatch && rule.connectionType === 'new' && !isReply) {
         results.push({
           ruleId: rule.id,
@@ -128,10 +148,10 @@ export function SimulationPanel({
 
     const timer = setTimeout(() => {
       const check = ruleChecks[currentCheckIndex];
-      
+
       if (check.matched) {
         setFinalResult(check.action === 'allow' ? 'allowed' : 'dropped');
-        
+
         if (check.action === 'allow') {
           setPhase('response');
           onSimulationChange({
@@ -142,7 +162,7 @@ export function SimulationPanel({
             direction: 'reply',
             status: 'traveling'
           });
-          
+
           setTimeout(() => {
             setPhase('complete');
           }, 1500);
@@ -220,7 +240,7 @@ export function SimulationPanel({
               <Play className="w-4 h-4 mr-2" />
               Start simulatie
             </Button>
-            
+
             <Button
               variant="outline"
               onClick={resetSimulation}
@@ -248,7 +268,7 @@ export function SimulationPanel({
                 <ArrowRight className="w-4 h-4" />
                 <span className="text-sm font-medium">Request</span>
               </div>
-              
+
               <div className={cn(
                 "flex items-center gap-2 px-3 py-2 rounded-lg",
                 phase === 'checking' ? "bg-primary/20 text-primary" : "bg-muted"
@@ -256,7 +276,7 @@ export function SimulationPanel({
                 <ShieldCheck className="w-4 h-4" />
                 <span className="text-sm font-medium">Regel check</span>
               </div>
-              
+
               <div className={cn(
                 "flex items-center gap-2 px-3 py-2 rounded-lg",
                 phase === 'response' ? "bg-primary/20 text-primary" : "bg-muted"
@@ -308,8 +328,8 @@ export function SimulationPanel({
                 <Badge
                   className={cn(
                     "text-lg py-2 px-4",
-                    finalResult === 'allowed' 
-                      ? "bg-primary text-primary-foreground" 
+                    finalResult === 'allowed'
+                      ? "bg-primary text-primary-foreground"
                       : "bg-destructive text-destructive-foreground"
                   )}
                 >

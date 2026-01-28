@@ -14,6 +14,14 @@ export const ConnectionLine = memo(function ConnectionLine({
   packet,
   isActive = false
 }: ConnectionLineProps) {
+  console.log('🖍️ ConnectionLine render:', {
+    fromId: from.id,
+    fromCoords: { x: from.x, y: from.y },
+    toId: to.id,
+    toCoords: { x: to.x, y: to.y },
+    isActive
+  });
+
   const isPacketOnThisLine = packet && (
     (packet.sourceId === from.id && packet.destinationId === to.id) ||
     (packet.sourceId === to.id && packet.destinationId === from.id) ||
@@ -34,7 +42,7 @@ export const ConnectionLine = memo(function ConnectionLine({
         strokeDasharray={isActive ? '0' : '0'}
         className="transition-all duration-300"
       />
-      
+
       {/* Animated flow dots */}
       <circle r="4" fill="hsl(var(--primary)/0.5)">
         <animateMotion
@@ -43,7 +51,7 @@ export const ConnectionLine = memo(function ConnectionLine({
           path={`M${from.x},${from.y} L${to.x},${to.y}`}
         />
       </circle>
-      
+
       {/* Packet indicator */}
       {isPacketOnThisLine && packet && (
         <circle

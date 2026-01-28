@@ -48,7 +48,7 @@ export function FirewallSimulator() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border bg-card">
+      <header className="border-b border-border bg-card sticky top-0 z-10">
         <div className="container py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -71,116 +71,120 @@ export function FirewallSimulator() {
         </div>
       </header>
 
-      <main className="container py-6 space-y-6">
-        {/* Phase navigation */}
-        <PhaseNavigation
-          currentPhase={phase}
-          onPhaseChange={setPhase}
-          canProceed={canProceed}
-        />
+      <div className="flex">
+        {/* Sidebar - Phase navigation */}
+        <aside className="w-64 border-r border-border bg-card/50 sticky top-[73px] h-[calc(100vh-73px)] p-6">
+          <PhaseNavigation
+            currentPhase={phase}
+            onPhaseChange={setPhase}
+            canProceed={canProceed}
+          />
+        </aside>
 
-        {/* Phase description */}
-        <div className="flex items-start gap-3 p-4 bg-card rounded-xl border border-border">
-          <HelpCircle className="w-5 h-5 text-primary mt-0.5" />
-          <p className="text-sm text-foreground">
-            {phaseDescriptions[phase]}
-          </p>
-        </div>
-
-        {/* Phase 1: Network building */}
-        {phase === 1 && (
-          <div className="space-y-4">
-            <NodeToolbar
-              onAddNode={addNode}
-              selectedNodeType={selectedNode?.type || null}
-              selectedNodeName={selectedNode?.name}
-            />
-            <NetworkCanvas
-              nodes={nodes}
-              connections={connections}
-              selectedNodeId={selectedNodeId}
-              onSelectNode={setSelectedNodeId}
-              onUpdateNode={updateNode}
-              onDeleteNode={deleteNode}
-              isEditable={true}
-            />
+        <main className="flex-1 container py-6 space-y-6">
+          {/* Phase description */}
+          <div className="flex items-start gap-3 p-4 bg-card rounded-xl border border-border">
+            <HelpCircle className="w-5 h-5 text-primary mt-0.5" />
+            <p className="text-sm text-foreground">
+              {phaseDescriptions[phase]}
+            </p>
           </div>
-        )}
 
-        {/* Phase 2: Rule creation */}
-        {phase === 2 && (
-          <div className="grid lg:grid-cols-2 gap-6">
+          {/* Phase 1: Network building */}
+          {phase === 1 && (
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Je netwerk</h3>
+              <NodeToolbar
+                onAddNode={addNode}
+                selectedNodeType={selectedNode?.type || null}
+                selectedNodeName={selectedNode?.name}
+              />
               <NetworkCanvas
                 nodes={nodes}
                 connections={connections}
-                selectedNodeId={null}
-                onSelectNode={() => { }}
-                onUpdateNode={() => { }}
-                onDeleteNode={() => { }}
-                isEditable={false}
+                selectedNodeId={selectedNodeId}
+                onSelectNode={setSelectedNodeId}
+                onUpdateNode={updateNode}
+                onDeleteNode={deleteNode}
+                isEditable={true}
               />
             </div>
-            <RuleEditor
-              nodes={nodes}
-              rules={rules}
-              onAddRule={addRule}
-              onDeleteRule={deleteRule}
-              onReorderRules={reorderRules}
-            />
-          </div>
-        )}
+          )}
 
-        {/* Phase 3: Simulation */}
-        {phase === 3 && (
-          <div className="grid lg:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Je netwerk</h3>
-              <NetworkCanvas
-                nodes={nodes}
-                connections={connections}
-                selectedNodeId={null}
-                onSelectNode={() => { }}
-                onUpdateNode={() => { }}
-                onDeleteNode={() => { }}
-                isEditable={false}
-                packet={simulation || undefined}
-              />
-
-              {/* Show current rules for reference */}
-              <div className="p-4 bg-card rounded-xl border border-border">
-                <h4 className="font-medium mb-3">Actieve regels:</h4>
-                {rules.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Geen regels gedefinieerd</p>
-                ) : (
-                  <div className="space-y-1 text-sm">
-                    {rules.sort((a, b) => a.order - b.order).map((rule, idx) => (
-                      <div key={rule.id} className="flex items-center gap-2">
-                        <span className="font-mono text-muted-foreground">{idx + 1}.</span>
-                        <span>{nodes.find(n => n.id === rule.sourceId)?.name}</span>
-                        <span className="text-muted-foreground">→</span>
-                        <span>{nodes.find(n => n.id === rule.destinationId)?.name}</span>
-                        <span className="text-muted-foreground">({rule.connectionType})</span>
-                        <span className={rule.action === 'allow' ? 'text-primary' : 'text-destructive'}>
-                          {rule.action.toUpperCase()}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+          {/* Phase 2: Rule creation */}
+          {phase === 2 && (
+            <div className="grid lg:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Je netwerk</h3>
+                <NetworkCanvas
+                  nodes={nodes}
+                  connections={connections}
+                  selectedNodeId={null}
+                  onSelectNode={() => { }}
+                  onUpdateNode={() => { }}
+                  onDeleteNode={() => { }}
+                  isEditable={false}
+                />
               </div>
+              <RuleEditor
+                nodes={nodes}
+                rules={rules}
+                onAddRule={addRule}
+                onDeleteRule={deleteRule}
+                onReorderRules={reorderRules}
+              />
             </div>
+          )}
 
-            <SimulationPanel
-              nodes={nodes}
-              rules={rules}
-              simulation={simulation}
-              onSimulationChange={setSimulation}
-            />
-          </div>
-        )}
-      </main>
+          {/* Phase 3: Simulation */}
+          {phase === 3 && (
+            <div className="grid lg:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Je netwerk</h3>
+                <NetworkCanvas
+                  nodes={nodes}
+                  connections={connections}
+                  selectedNodeId={null}
+                  onSelectNode={() => { }}
+                  onUpdateNode={() => { }}
+                  onDeleteNode={() => { }}
+                  isEditable={false}
+                  packet={simulation || undefined}
+                />
+
+                {/* Show current rules for reference */}
+                <div className="p-4 bg-card rounded-xl border border-border">
+                  <h4 className="font-medium mb-3">Actieve regels:</h4>
+                  {rules.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Geen regels gedefinieerd</p>
+                  ) : (
+                    <div className="space-y-1 text-sm">
+                      {rules.sort((a, b) => a.order - b.order).map((rule, idx) => (
+                        <div key={rule.id} className="flex items-center gap-2">
+                          <span className="font-mono text-muted-foreground">{idx + 1}.</span>
+                          <span>{nodes.find(n => n.id === rule.sourceId)?.name}</span>
+                          <span className="text-muted-foreground">→</span>
+                          <span>{nodes.find(n => n.id === rule.destinationId)?.name}</span>
+                          <span className="text-muted-foreground">({rule.connectionType})</span>
+                          <span className={rule.action === 'allow' ? 'text-primary' : 'text-destructive'}>
+                            {rule.action.toUpperCase()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <SimulationPanel
+                nodes={nodes}
+                rules={rules}
+                simulation={simulation}
+                onSimulationChange={setSimulation}
+              />
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

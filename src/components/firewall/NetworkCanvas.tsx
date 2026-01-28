@@ -52,7 +52,7 @@ export function NetworkCanvas({
     if (!isEditable) return;
     const node = nodes.find(n => n.id === nodeId);
     if (!node || node.type === 'router') return;
-    
+
     setDragState({
       nodeId,
       startX: e.clientX,
@@ -70,12 +70,12 @@ export function NetworkCanvas({
       setPanStart({ x: e.clientX, y: e.clientY });
       return;
     }
-    
+
     if (!dragState) return;
-    
+
     const dx = (e.clientX - dragState.startX) / zoom;
     const dy = (e.clientY - dragState.startY) / zoom;
-    
+
     onUpdateNode(dragState.nodeId, {
       x: dragState.nodeStartX + dx,
       y: dragState.nodeStartY + dy
@@ -100,7 +100,7 @@ export function NetworkCanvas({
   return (
     <div
       ref={canvasRef}
-      className={`relative w-full h-[500px] bg-gradient-to-br from-background to-muted/30 rounded-xl border border-border overflow-hidden ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+      className={`relative w-full h-[700px] bg-gradient-to-br from-background to-muted/30 rounded-xl border border-border overflow-hidden ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
       onClick={() => !isPanning && onSelectNode(null)}
       onMouseDown={handleCanvasMouseDown}
       onMouseMove={handleMouseMove}
@@ -174,7 +174,7 @@ export function NetworkCanvas({
             const fromNode = getNodeById(conn.fromId);
             const toNode = getNodeById(conn.toId);
             if (!fromNode || !toNode) return null;
-            
+
             return (
               <ConnectionLine
                 key={conn.id}

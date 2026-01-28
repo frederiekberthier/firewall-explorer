@@ -34,7 +34,7 @@ export function useNetworkState() {
     } else if (type === 'host') {
       // Host must be attached to a router or VLAN
       const parentNode = selectedNodeId ? nodes.find(n => n.id === selectedNodeId) : null;
-      
+
       if (parentNode && (parentNode.type === 'router' || parentNode.type === 'vlan')) {
         // Attach to selected router or VLAN
         const existingChildren = nodes.filter(n => n.parentId === selectedNodeId).length;
@@ -63,7 +63,7 @@ export function useNetworkState() {
     };
 
     setNodes(prev => [...prev, newNode]);
-    
+
     if (parentId) {
       setConnections(prev => [...prev, {
         id: `conn-${Date.now()}`,
@@ -74,14 +74,14 @@ export function useNetworkState() {
   }, [nodes, selectedNodeId]);
 
   const updateNode = useCallback((id: string, updates: Partial<NetworkNode>) => {
-    setNodes(prev => prev.map(node => 
+    setNodes(prev => prev.map(node =>
       node.id === id ? { ...node, ...updates } : node
     ));
   }, []);
 
   const deleteNode = useCallback((id: string) => {
     if (id === ROUTER_ID) return;
-    
+
     const nodesToDelete = new Set<string>([id]);
     const findChildren = (parentId: string) => {
       nodes.forEach(n => {
@@ -94,10 +94,10 @@ export function useNetworkState() {
     findChildren(id);
 
     setNodes(prev => prev.filter(n => !nodesToDelete.has(n.id)));
-    setConnections(prev => prev.filter(c => 
+    setConnections(prev => prev.filter(c =>
       !nodesToDelete.has(c.fromId) && !nodesToDelete.has(c.toId)
     ));
-    setRules(prev => prev.filter(r => 
+    setRules(prev => prev.filter(r =>
       !nodesToDelete.has(r.sourceId) && !nodesToDelete.has(r.destinationId)
     ));
     if (selectedNodeId && nodesToDelete.has(selectedNodeId)) {

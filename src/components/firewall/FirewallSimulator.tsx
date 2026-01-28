@@ -5,7 +5,7 @@ import { RuleEditor } from './RuleEditor';
 import { SimulationPanel } from './SimulationPanel';
 import { PhaseNavigation } from './PhaseNavigation';
 import { Button } from '@/components/ui/button';
-import { RotateCcw, HelpCircle } from 'lucide-react';
+import { RotateCcw, HelpCircle, Mail, MapPin, Phone, ExternalLink } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -49,31 +49,29 @@ export function FirewallSimulator() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b border-border bg-card sticky top-0 z-10">
-        <div className="container py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <img src="/logo.png" alt="Logo" className="h-10 w-10" />
-              <div>
-                <h1 className="text-2xl font-bold text-foreground">
-                  Firewall Simulator
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  Leer hoe stateful firewall regels werken
-                </p>
-              </div>
+        <div className="flex items-center justify-between px-6 py-3">
+          <div className="flex items-center gap-3">
+            <img src="/logo.png" alt="Logo" className="h-9 w-9" />
+            <div>
+              <h1 className="text-xl font-bold text-foreground">
+                Firewall Simulator
+              </h1>
+              <p className="text-xs text-muted-foreground">
+                Leer hoe stateful firewall regels werken
+              </p>
             </div>
-
-            <Button variant="outline" onClick={resetNetwork}>
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Reset
-            </Button>
           </div>
+
+          <Button variant="outline" size="sm" onClick={resetNetwork}>
+            <RotateCcw className="w-4 h-4 mr-2" />
+            Reset
+          </Button>
         </div>
       </header>
 
       <div className="flex">
         {/* Sidebar - Phase navigation */}
-        <aside className="w-64 border-r border-border bg-card/50 sticky top-[73px] h-[calc(100vh-73px)] p-6">
+        <aside className="w-64 border-r border-border bg-card/50 sticky top-[65px] h-[calc(100vh-65px)] p-6">
           <PhaseNavigation
             currentPhase={phase}
             onPhaseChange={setPhase}
@@ -185,6 +183,56 @@ export function FirewallSimulator() {
           )}
         </main>
       </div>
+
+      {/* Footer */}
+      <footer className="border-t border-border bg-card/80 backdrop-blur-sm">
+        <div className="px-6 py-4">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground mb-1">
+                  Graduaat Internet of Things
+                </h3>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Howest Hogeschool West-Vlaanderen - Campus Kortrijk
+                </p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5" />
+                    <span>Sint-Martenslatemlaan 2B, 8500 Kortrijk</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5" />
+                    <span>+32 56 24 12 90</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5" />
+                    <a href="mailto:iot@howest.be" className="hover:text-primary transition-colors">
+                      iot@howest.be
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              <a
+                href="https://www.howest.be/nl/opleidingen/graduaat/internet-of-things"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-xs text-primary hover:underline whitespace-nowrap"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                Meer info over de opleiding
+              </a>
+            </div>
+
+            <div className="border-t border-border/50 pt-3">
+              <p className="text-xs text-muted-foreground text-center">
+                © {new Date().getFullYear()} Howest - Hogeschool West-Vlaanderen
+              </p>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

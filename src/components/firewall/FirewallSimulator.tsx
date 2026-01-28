@@ -33,11 +33,11 @@ export function FirewallSimulator() {
   } = useNetworkState();
 
   const selectedNode = nodes.find(n => n.id === selectedNodeId);
-  const canProceed = phase === 1 
-    ? nodes.length > 1 
-    : phase === 2 
-    ? true 
-    : true;
+  const canProceed = phase === 1
+    ? nodes.length > 1
+    : phase === 2
+      ? true
+      : true;
 
   const phaseDescriptions = {
     1: 'Bouw je netwerk door nodes toe te voegen. Klik op Internet, VLAN of Host om ze aan de router te koppelen. Voor hosts: selecteer eerst een router of VLAN.',
@@ -51,15 +51,18 @@ export function FirewallSimulator() {
       <header className="border-b border-border bg-card">
         <div className="container py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">
-                Firewall Simulator
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Leer hoe stateful firewall regels werken
-              </p>
+            <div className="flex items-center gap-4">
+              <img src="/logo.png" alt="Logo" className="h-10 w-10" />
+              <div>
+                <h1 className="text-2xl font-bold text-foreground">
+                  Firewall Simulator
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  Leer hoe stateful firewall regels werken
+                </p>
+              </div>
             </div>
-            
+
             <Button variant="outline" onClick={resetNetwork}>
               <RotateCcw className="w-4 h-4 mr-2" />
               Reset
@@ -87,7 +90,7 @@ export function FirewallSimulator() {
         {/* Phase 1: Network building */}
         {phase === 1 && (
           <div className="space-y-4">
-          <NodeToolbar
+            <NodeToolbar
               onAddNode={addNode}
               selectedNodeType={selectedNode?.type || null}
               selectedNodeName={selectedNode?.name}
@@ -113,9 +116,9 @@ export function FirewallSimulator() {
                 nodes={nodes}
                 connections={connections}
                 selectedNodeId={null}
-                onSelectNode={() => {}}
-                onUpdateNode={() => {}}
-                onDeleteNode={() => {}}
+                onSelectNode={() => { }}
+                onUpdateNode={() => { }}
+                onDeleteNode={() => { }}
                 isEditable={false}
               />
             </div>
@@ -138,13 +141,13 @@ export function FirewallSimulator() {
                 nodes={nodes}
                 connections={connections}
                 selectedNodeId={null}
-                onSelectNode={() => {}}
-                onUpdateNode={() => {}}
-                onDeleteNode={() => {}}
+                onSelectNode={() => { }}
+                onUpdateNode={() => { }}
+                onDeleteNode={() => { }}
                 isEditable={false}
                 packet={simulation || undefined}
               />
-              
+
               {/* Show current rules for reference */}
               <div className="p-4 bg-card rounded-xl border border-border">
                 <h4 className="font-medium mb-3">Actieve regels:</h4>
@@ -168,7 +171,7 @@ export function FirewallSimulator() {
                 )}
               </div>
             </div>
-            
+
             <SimulationPanel
               nodes={nodes}
               rules={rules}

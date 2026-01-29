@@ -95,6 +95,7 @@ export function FirewallSimulator() {
                 onAddNode={addNode}
                 selectedNodeType={selectedNode?.type || null}
                 selectedNodeName={selectedNode?.name}
+                nodes={nodes}
               />
               <NetworkCanvas
                 nodes={nodes}

@@ -104,13 +104,22 @@ export function SimulationPanel({
     }
 
     // If no rule matched, default deny
-    if (results.length === 0 || results.every(r => !r.matched)) {
+    /*if (results.length === 0 || results.every(r => !r.matched)) {
       results.push({
         ruleId: 'default',
         matched: true,
         action: 'drop',
-        reason: 'Geen matchende regel gevonden. Default actie: DROP (implicit deny)'
+        reason: 'Geen matchende regel gevonden. Default actie: DENY (implicit deny)'
+      });*/
+    // If no rule matched, default allow
+    if (results.length === 0 || results.every(r => !r.matched)) {
+      results.push({
+        ruleId: 'default',
+        matched: true,
+        action: 'allow',
+        reason: 'Geen matchende regel gevonden. Default actie: ALLOW (implicit allow)'
       });
+
     }
 
     return results;

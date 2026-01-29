@@ -51,7 +51,7 @@ export function FirewallSimulator() {
       <header className="border-b border-border bg-card sticky top-0 z-10">
         <div className="flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="Logo" className="h-9 w-9" />
+            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Logo" className="h-9 w-9" />
             <div>
               <h1 className="text-xl font-bold text-foreground">
                 Firewall Simulator

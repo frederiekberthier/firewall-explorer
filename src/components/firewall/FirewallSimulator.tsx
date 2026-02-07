@@ -20,6 +20,8 @@ export function FirewallSimulator() {
     connections,
     selectedNodeId,
     setSelectedNodeId,
+    firewallPolicy,
+    setFirewallPolicy,
     rules,
     simulation,
     setSimulation,
@@ -41,7 +43,7 @@ export function FirewallSimulator() {
 
   const phaseDescriptions = {
     1: 'Bouw je netwerk door nodes toe te voegen. Klik op Internet, VLAN of Host om ze aan de router te koppelen. Voor hosts: selecteer eerst een router of VLAN.',
-    2: 'Definieer firewall regels. Kies bron, doel, type (new/related) en actie (allow/drop). Versleep regels om de volgorde aan te passen.',
+    2: 'Kies eerst je firewall strategie (Allow All of Block All), en definieer daarna firewall regels. De strategie bepaalt wat er gebeurt als geen enkele regel matcht.',
     3: 'Test je regels! Selecteer bron en doel, en bekijk hoe de firewall je regels evalueert bij TCP communicatie.'
   };
 
@@ -127,6 +129,8 @@ export function FirewallSimulator() {
               <RuleEditor
                 nodes={nodes}
                 rules={rules}
+                firewallPolicy={firewallPolicy}
+                onPolicyChange={setFirewallPolicy}
                 onAddRule={addRule}
                 onDeleteRule={deleteRule}
                 onReorderRules={reorderRules}
@@ -177,6 +181,7 @@ export function FirewallSimulator() {
               <SimulationPanel
                 nodes={nodes}
                 rules={rules}
+                firewallPolicy={firewallPolicy}
                 simulation={simulation}
                 onSimulationChange={setSimulation}
               />

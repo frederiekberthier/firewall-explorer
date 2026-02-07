@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { NetworkNode, Connection, FirewallRule, Phase, SimulationPacket } from '@/types/firewall';
+import { NetworkNode, Connection, FirewallRule, Phase, SimulationPacket, FirewallPolicy } from '@/types/firewall';
 
 const ROUTER_ID = 'router-main';
 
@@ -12,6 +12,7 @@ export function useNetworkState() {
   const [nodes, setNodes] = useState<NetworkNode[]>(initialNodes);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [firewallPolicy, setFirewallPolicy] = useState<FirewallPolicy>('block-all');
   const [rules, setRules] = useState<FirewallRule[]>([]);
   const [simulation, setSimulation] = useState<SimulationPacket | null>(null);
 
@@ -134,6 +135,7 @@ export function useNetworkState() {
     setNodes(initialNodes);
     setConnections([]);
     setSelectedNodeId(null);
+    setFirewallPolicy('block-all');
     setRules([]);
     setSimulation(null);
     setPhase(1);
@@ -146,6 +148,8 @@ export function useNetworkState() {
     connections,
     selectedNodeId,
     setSelectedNodeId,
+    firewallPolicy,
+    setFirewallPolicy,
     rules,
     simulation,
     setSimulation,

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { NetworkNode, FirewallRule, SimulationPacket } from '@/types/firewall';
+import { NetworkNode, FirewallRule, SimulationPacket, FirewallPolicy } from '@/types/firewall';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 interface SimulationPanelProps {
   nodes: NetworkNode[];
   rules: FirewallRule[];
+  firewallPolicy: FirewallPolicy;
   simulation: SimulationPacket | null;
   onSimulationChange: (packet: SimulationPacket | null) => void;
 }
@@ -24,6 +25,7 @@ interface RuleCheckResult {
 export function SimulationPanel({
   nodes,
   rules,
+  firewallPolicy,
   simulation,
   onSimulationChange
 }: SimulationPanelProps) {
@@ -103,27 +105,20 @@ export function SimulationPanel({
       }
     }
 
-    // If no rule matched, default deny
-    /*if (results.length === 0 || results.every(r => !r.matched)) {
-      results.push({
-        ruleId: 'default',
-        matched: true,
-        action: 'drop',
-        reason: 'Geen matchende regel gevonden. Default actie: DENY (implicit deny)'
-      });*/
-    // If no rule matched, default allow
+    // If no rule matched, apply default policy
     if (results.length === 0 || results.every(r => !r.matched)) {
+      const defaultAction = firewallPolicy === 'allow-all' ? 'allow' : 'drop';
+      const policyName = firewallPolicy === 'allow-all' ? 'ALLOW (default allow)' : 'DENY (default deny)';
       results.push({
         ruleId: 'default',
         matched: true,
-        action: 'allow',
-        reason: 'Geen matchende regel gevonden. Default actie: ALLOW (implicit allow)'
+        action: defaultAction,
+        reason: `Geen matchende regel gevonden. Default policy: ${policyName}`
       });
-
     }
 
     return results;
-  }, [rules, getNodeName]);
+  }, [rules, getNodeName, firewallPolicy]);
 
   const startSimulation = useCallback(() => {
     if (!sourceId || !destinationId) return;
@@ -206,6 +201,25 @@ export function SimulationPanel({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Show current firewall policy */}
+          <div className="p-3 bg-muted/50 rounded-lg border border-border">
+            <div className="flex items-center gap-2 text-sm">
+              {firewallPolicy === 'block-all' ? (
+                <>
+                  <ShieldX className="w-4 h-4 text-destructive" />
+                  <span className="font-medium">Actieve policy:</span>
+                  <Badge variant="destructive">Block All (Default Deny)</Badge>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="w-4 h-4 text-green-600" />
+                  <span className="font-medium">Actieve policy:</span>
+                  <Badge className="bg-green-600">Allow All (Default Allow)</Badge>
+                </>
+              )}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Bron</label>

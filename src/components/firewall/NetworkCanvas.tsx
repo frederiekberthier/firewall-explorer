@@ -3,7 +3,7 @@ import { NetworkNode, Connection, SimulationPacket } from '@/types/firewall';
 import { NetworkNodeComponent } from './NetworkNode';
 import { ConnectionLine } from './ConnectionLine';
 import { Button } from '@/components/ui/button';
-import { ZoomIn, ZoomOut, Maximize2, Move } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Move } from 'lucide-react';
 
 interface NetworkCanvasProps {
   nodes: NetworkNode[];
@@ -137,7 +137,7 @@ export function NetworkCanvas({
           onClick={(e) => { e.stopPropagation(); handleZoomReset(); }}
           title="Reset zoom en positie"
         >
-          <Maximize2 className="w-4 h-4" />
+          <RotateCcw className="w-4 h-4" />
         </Button>
       </div>
 

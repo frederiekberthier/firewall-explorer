@@ -1,5 +1,7 @@
 export type NodeType = 'router' | 'internet' | 'vlan' | 'host';
 
+export type FirewallPolicy = 'allow-all' | 'block-all';
+
 export interface NetworkNode {
   id: string;
   type: NodeType;

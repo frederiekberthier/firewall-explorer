@@ -14,14 +14,6 @@ export const ConnectionLine = memo(function ConnectionLine({
   packet,
   isActive = false
 }: ConnectionLineProps) {
-  console.log('🖍️ ConnectionLine render:', {
-    fromId: from.id,
-    fromCoords: { x: from.x, y: from.y },
-    toId: to.id,
-    toCoords: { x: to.x, y: to.y },
-    isActive
-  });
-
   const isPacketOnThisLine = packet && (
     (packet.sourceId === from.id && packet.destinationId === to.id) ||
     (packet.sourceId === to.id && packet.destinationId === from.id) ||

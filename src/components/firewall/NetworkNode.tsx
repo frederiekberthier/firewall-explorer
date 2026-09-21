@@ -129,9 +129,21 @@ export const NetworkNodeComponent = memo(function NetworkNodeComponent({
           </button>
         </div>
       ) : (
-        <span className="text-sm font-medium bg-card/90 px-2 py-1 rounded shadow-sm border border-border/50">
-          {node.name}
-        </span>
+        <div className="flex flex-col items-center gap-0.5">
+          <span className="text-sm font-medium bg-card/90 px-2 py-1 rounded shadow-sm border border-border/50">
+            {node.name}
+          </span>
+          {node.type === 'vlan' && node.subnet && (
+            <span className="text-[10px] text-muted-foreground bg-card/70 px-1.5 rounded">
+              VLAN {node.vlanId} · {node.subnet}
+            </span>
+          )}
+          {node.type === 'host' && node.ip && (
+            <span className="text-[10px] text-muted-foreground bg-card/70 px-1.5 rounded">
+              {node.ip}
+            </span>
+          )}
+        </div>
       )}
     </div>
   );

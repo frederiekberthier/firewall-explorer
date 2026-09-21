@@ -1,9 +1,12 @@
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useNetworkState } from '@/hooks/useNetworkState';
 import { NetworkCanvas } from './NetworkCanvas';
 import { NodeToolbar } from './NodeToolbar';
 import { RuleEditor } from './RuleEditor';
 import { SimulationPanel } from './SimulationPanel';
 import { PhaseNavigation } from './PhaseNavigation';
+import { ScenarioPanel } from './ScenarioPanel';
 import { Button } from '@/components/ui/button';
 import { RotateCcw, HelpCircle, Mail, MapPin, Phone, ExternalLink } from 'lucide-react';
 import {
@@ -11,8 +14,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { getNodeName } from '@/lib/nodeNames';
+import { cn } from '@/lib/utils';
+import { findScenario } from '@/data/scenarios';
 
 export function FirewallSimulator() {
+  const [activeRuleId, setActiveRuleId] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
   const {
     phase,
     setPhase,
@@ -31,8 +39,24 @@ export function FirewallSimulator() {
     addRule,
     deleteRule,
     reorderRules,
-    resetNetwork
+    resetNetwork,
+    activeScenario,
+    loadScenario,
+    clearScenario,
+    addressLists,
+    addAddressList,
+    deleteAddressList
   } = useNetworkState();
+
+  // A link with ?s=<scenario-id> auto-loads that scenario, so a teacher can
+  // share one URL per exercise instead of walking students through the
+  // catalogue every time.
+  useEffect(() => {
+    const scenarioId = searchParams.get('s');
+    if (!scenarioId) return;
+    const scenario = findScenario(scenarioId);
+    if (scenario) loadScenario(scenario);
+  }, [searchParams, loadScenario]);
 
   const selectedNode = nodes.find(n => n.id === selectedNodeId);
   const canProceed = phase === 1
@@ -64,7 +88,7 @@ export function FirewallSimulator() {
             </div>
           </div>
 
-          <Button variant="outline" size="sm" onClick={resetNetwork}>
+          <Button variant="outline" size="sm" onClick={() => { resetNetwork(); setActiveRuleId(null); }}>
             <RotateCcw className="w-4 h-4 mr-2" />
             Reset
           </Button>
@@ -89,6 +113,12 @@ export function FirewallSimulator() {
               {phaseDescriptions[phase]}
             </p>
           </div>
+
+          <ScenarioPanel
+            activeScenario={activeScenario}
+            onLoadScenario={loadScenario}
+            onClearScenario={clearScenario}
+          />
 
           {/* Phase 1: Network building */}
           {phase === 1 && (
@@ -130,10 +160,14 @@ export function FirewallSimulator() {
                 nodes={nodes}
                 rules={rules}
                 firewallPolicy={firewallPolicy}
+                activeScenario={activeScenario}
+                addressLists={addressLists}
                 onPolicyChange={setFirewallPolicy}
                 onAddRule={addRule}
                 onDeleteRule={deleteRule}
                 onReorderRules={reorderRules}
+                onAddAddressList={addAddressList}
+                onDeleteAddressList={deleteAddressList}
               />
             </div>
           )}
@@ -161,18 +195,36 @@ export function FirewallSimulator() {
                     <p className="text-sm text-muted-foreground">Geen regels gedefinieerd</p>
                   ) : (
                     <div className="space-y-1 text-sm">
-                      {rules.sort((a, b) => a.order - b.order).map((rule, idx) => (
-                        <div key={rule.id} className="flex items-center gap-2">
-                          <span className="font-mono text-muted-foreground">{idx + 1}.</span>
-                          <span>{nodes.find(n => n.id === rule.sourceId)?.name}</span>
-                          <span className="text-muted-foreground">→</span>
-                          <span>{nodes.find(n => n.id === rule.destinationId)?.name}</span>
-                          <span className="text-muted-foreground">({rule.connectionType})</span>
-                          <span className={rule.action === 'allow' ? 'text-primary' : 'text-destructive'}>
-                            {rule.action.toUpperCase()}
-                          </span>
-                        </div>
-                      ))}
+                      {(() => {
+                        const sortedRules = [...rules].sort((a, b) => a.order - b.order);
+                        const matchedRule = sortedRules.find(r => r.id === activeRuleId);
+                        return sortedRules.map((rule, idx) => {
+                          const isActive = rule.id === activeRuleId;
+                          const isUnreached = matchedRule ? rule.order > matchedRule.order : false;
+                          return (
+                            <div
+                              key={rule.id}
+                              className={cn(
+                                "flex items-center gap-2 px-1.5 py-0.5 rounded",
+                                isActive && "bg-primary/10 ring-1 ring-primary/40",
+                                isUnreached && "opacity-40"
+                              )}
+                            >
+                              <span className="font-mono text-muted-foreground">{idx + 1}.</span>
+                              <span>{getNodeName(nodes, rule.sourceId, addressLists)}</span>
+                              <span className="text-muted-foreground">→</span>
+                              <span>{getNodeName(nodes, rule.destinationId, addressLists)}</span>
+                              <span className="text-muted-foreground">({rule.connectionStates.join(',')})</span>
+                              <span className={rule.action === 'allow' ? 'text-primary' : 'text-destructive'}>
+                                {rule.action.toUpperCase()}
+                              </span>
+                              {isUnreached && (
+                                <span className="text-xs text-muted-foreground italic">niet bereikt</span>
+                              )}
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                   )}
                 </div>
@@ -182,8 +234,10 @@ export function FirewallSimulator() {
                 nodes={nodes}
                 rules={rules}
                 firewallPolicy={firewallPolicy}
+                addressLists={addressLists}
                 simulation={simulation}
                 onSimulationChange={setSimulation}
+                onActiveRuleChange={setActiveRuleId}
               />
             </div>
           )}

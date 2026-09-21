@@ -1,49 +1,83 @@
 import { useState } from 'react';
-import { NetworkNode, FirewallRule, FirewallPolicy } from '@/types/firewall';
+import { NetworkNode, FirewallRule, FirewallPolicy, ConnState, RuleAction, AddressList } from '@/types/firewall';
+import { Scenario } from '@/types/scenario';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, GripVertical, Plus, ShieldCheck, ShieldX, ArrowRight, Download, Shield } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Trash2, GripVertical, Plus, ShieldCheck, ShieldX, ShieldAlert, ArrowRight, Download, Shield } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getNodeName as getNodeNameForNodes } from '@/lib/nodeNames';
+import { ScenarioSelfTest } from './ScenarioSelfTest';
+import { AddressListManager } from './AddressListManager';
+
+const CONNECTION_STATE_OPTIONS: { value: ConnState; label: string; hint: string }[] = [
+  { value: 'new', label: 'New', hint: 'eerste pakket van een nieuwe verbinding' },
+  { value: 'established', label: 'Established', hint: 'antwoord op een bestaande verbinding' },
+  { value: 'related', label: 'Related', hint: 'hoort bij een bestaande verbinding (bv. ICMP-fout, FTP-data)' },
+  { value: 'invalid', label: 'Invalid', hint: 'kan niet aan een verbinding gekoppeld worden' },
+  { value: 'untracked', label: 'Untracked', hint: 'connection tracking staat uit voor dit verkeer' },
+];
 
 interface RuleEditorProps {
   nodes: NetworkNode[];
   rules: FirewallRule[];
   firewallPolicy: FirewallPolicy;
+  activeScenario?: Scenario | null;
+  addressLists: AddressList[];
   onPolicyChange: (policy: FirewallPolicy) => void;
   onAddRule: (rule: Omit<FirewallRule, 'id' | 'order'>) => void;
   onDeleteRule: (id: string) => void;
   onReorderRules: (startIndex: number, endIndex: number) => void;
+  onAddAddressList: (name: string, memberIds: string[]) => void;
+  onDeleteAddressList: (id: string) => void;
 }
 
 export function RuleEditor({
   nodes,
   rules,
   firewallPolicy,
+  activeScenario,
+  addressLists,
   onPolicyChange,
   onAddRule,
   onDeleteRule,
-  onReorderRules
+  onReorderRules,
+  onAddAddressList,
+  onDeleteAddressList
 }: RuleEditorProps) {
   const [sourceId, setSourceId] = useState<string>('');
   const [destinationId, setDestinationId] = useState<string>('');
-  const [connectionType, setConnectionType] = useState<'new' | 'related'>('new');
-  const [action, setAction] = useState<'allow' | 'drop'>('allow');
+  const [connectionStates, setConnectionStates] = useState<ConnState[]>(['new']);
+  const [action, setAction] = useState<RuleAction>('allow');
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   const availableNodes = nodes.filter(n => n.type !== 'router');
+  const routerNode = nodes.find(n => n.type === 'router');
+  // The router is an optional destination — most rules are inter-VLAN/host
+  // traffic and never need it. Choosing it lets you (optionally) practice
+  // "who may manage the router" (chain input), without forcing that on
+  // anyone who just wants forward rules between VLANs/hosts.
+  const destinationNodes = routerNode ? [...availableNodes, routerNode] : availableNodes;
+
+  const isWildcardId = (id: string) => id.startsWith('ANY');
+
+  const toggleConnectionState = (state: ConnState, checked: boolean) => {
+    setConnectionStates(prev =>
+      checked ? [...prev, state] : prev.filter(s => s !== state)
+    );
+  };
 
   const handleAddRule = () => {
-    if (!sourceId || !destinationId) return;
+    if (!sourceId || !destinationId || connectionStates.length === 0) return;
     // Allow same source and destination if one is a wildcard
-    const isWildcard = (id: string) => id.startsWith('ANY');
-    if (sourceId === destinationId && !isWildcard(sourceId)) return;
+    if (sourceId === destinationId && !isWildcardId(sourceId)) return;
 
     onAddRule({
       sourceId,
       destinationId,
-      connectionType,
+      connectionStates,
       action
     });
 
@@ -51,13 +85,7 @@ export function RuleEditor({
     setDestinationId('');
   };
 
-  const getNodeName = (id: string) => {
-    if (id === 'ANY') return 'ANY';
-    if (id === 'ANY_VLAN') return 'ANY VLAN';
-    if (id === 'ANY_HOST') return 'ANY HOST';
-    if (id === 'ANY_INTERNET') return 'ANY INTERNET';
-    return nodes.find(n => n.id === id)?.name || 'Onbekend';
-  };
+  const getNodeName = (id: string) => getNodeNameForNodes(nodes, id, addressLists);
 
   const handleDragStart = (index: number) => {
     setDragIndex(index);
@@ -79,10 +107,13 @@ export function RuleEditor({
     const prefix = paramType === 'src' ? 'src-address-list' : 'dst-address-list';
 
     // Handle wildcards - return empty string for wildcards (no restriction)
-    if (nodeId === 'ANY_VLAN') return '';
-    if (nodeId === 'ANY_HOST') return '';
-    if (nodeId === 'ANY_INTERNET') return '';
-    if (nodeId === 'ANY') return '';
+    if (isWildcardId(nodeId)) return '';
+
+    const list = addressLists.find(l => l.id === nodeId);
+    if (list) {
+      const listName = list.name.toLowerCase().replace(/\s+/g, '_');
+      return `${prefix}=${listName}`;
+    }
 
     const node = nodes.find(n => n.id === nodeId);
     if (!node) return '';
@@ -93,52 +124,88 @@ export function RuleEditor({
   };
 
   const handleExportRules = () => {
-    // Collect all unique address lists needed
-    const addressLists = new Set<string>();
+    // Collect distinct address-list definitions needed: either a manually
+    // created list (one line per member, sharing that list's name), or a
+    // single node referenced directly by a rule (one line, list name
+    // derived from the node's own name, as before address lists existed).
+    const referencedListIds = new Set<string>();
+    const referencedNodeIds = new Set<string>();
     rules.forEach(rule => {
-      const sourceNode = nodes.find(n => n.id === rule.sourceId);
-      const destNode = nodes.find(n => n.id === rule.destinationId);
-
-      if (sourceNode) addressLists.add(sourceNode.name);
-      if (destNode) addressLists.add(destNode.name);
+      [rule.sourceId, rule.destinationId].forEach(id => {
+        if (isWildcardId(id)) return;
+        if (addressLists.some(l => l.id === id)) {
+          referencedListIds.add(id);
+          return;
+        }
+        // The router itself needs no address-list entry: a rule aimed at it
+        // exports as chain=input, which already means "traffic to the
+        // router" without a dst-address-list (see dstParam below).
+        const node = nodes.find(n => n.id === id);
+        if (node?.type === 'router') return;
+        referencedNodeIds.add(id);
+      });
     });
 
-    // Generate address-list definitions
-    const addressListConfig = Array.from(addressLists)
-      .map(nodeName => {
-        const node = nodes.find(n => n.name === nodeName);
+    const nodeAddressLine = (node: NetworkNode, listName: string) => {
+      if (node.type === 'internet') {
+        return `/ip firewall address-list add list=${listName} address=0.0.0.0/0 comment="${node.name} - adjust to actual external networks"`;
+      } else if (node.type === 'vlan') {
+        const address = node.subnet || '192.168.x.0/24';
+        return `/ip firewall address-list add list=${listName} address=${address} comment="${node.name} (VLAN ${node.vlanId ?? '?'})"`;
+      } else if (node.type === 'host') {
+        const address = node.ip || '192.168.x.x';
+        return `/ip firewall address-list add list=${listName} address=${address} comment="${node.name}"`;
+      }
+      return '';
+    };
+
+    const addressListConfig = [
+      ...Array.from(referencedNodeIds).map(nodeId => {
+        const node = nodes.find(n => n.id === nodeId);
         if (!node) return '';
-
-        const listName = nodeName.toLowerCase().replace(/\s+/g, '_');
-
-        if (node.type === 'internet') {
-          return `# Address list for ${nodeName}\n/ip firewall address-list add list=${listName} address=0.0.0.0/0 comment="${nodeName} - adjust to actual external networks"`;
-        } else if (node.type === 'vlan') {
-          return `# Address list for ${nodeName}\n/ip firewall address-list add list=${listName} address=192.168.x.0/24 comment="${nodeName} - adjust to actual VLAN subnet"`;
-        } else if (node.type === 'host') {
-          return `# Address list for ${nodeName}\n/ip firewall address-list add list=${listName} address=192.168.x.x comment="${nodeName} - adjust to actual host IP"`;
-        }
-        return '';
+        const listName = node.name.toLowerCase().replace(/\s+/g, '_');
+        return `# Address list for ${node.name}\n${nodeAddressLine(node, listName)}`;
+      }),
+      ...Array.from(referencedListIds).map(listId => {
+        const list = addressLists.find(l => l.id === listId);
+        if (!list) return '';
+        const listName = list.name.toLowerCase().replace(/\s+/g, '_');
+        const memberLines = list.memberIds
+          .map(memberId => nodes.find(n => n.id === memberId))
+          .filter((n): n is NetworkNode => !!n)
+          .map(member => nodeAddressLine(member, listName))
+          .join('\n');
+        return `# Address list "${list.name}" (${list.memberIds.length} leden)\n${memberLines}`;
       })
+    ]
       .filter(Boolean)
       .join('\n\n');
 
-    const mikrotikConfig = rules
+    const mikrotikConfig = [...rules]
       .sort((a, b) => a.order - b.order)
       .map((rule, index) => {
         const source = getNodeName(rule.sourceId);
         const destination = getNodeName(rule.destinationId);
+        const destNode = nodes.find(n => n.id === rule.destinationId);
+        // A rule aimed at the router itself is management traffic (chain
+        // input), everything else is regular inter-VLAN/host traffic
+        // (chain forward) — this is the vast majority of rules, and the
+        // only chain anyone needs to think about unless they deliberately
+        // pick the router as a destination.
+        const chain = destNode?.type === 'router' ? 'input' : 'forward';
         const srcParam = getMikrotikAddressParam(rule.sourceId, 'src');
-        const dstParam = getMikrotikAddressParam(rule.destinationId, 'dst');
-        const connectionState = rule.connectionType === 'new' ? 'new' : 'established,related';
-        const action = rule.action === 'allow' ? 'accept' : 'drop';
+        // chain=input already means "traffic to the router" — no separate
+        // dst-address-list is needed (or meaningful) there.
+        const dstParam = chain === 'input' ? '' : getMikrotikAddressParam(rule.destinationId, 'dst');
+        const connectionState = rule.connectionStates.join(',');
+        const action = rule.action === 'allow' ? 'accept' : rule.action === 'reject' ? 'reject' : 'drop';
 
         // Generate comment for readability
-        const comment = `Rule ${index + 1}: ${source} -> ${destination} (${rule.connectionType})`;
+        const comment = `Rule ${index + 1}: ${source} -> ${destination} (${rule.connectionStates.join(',')})`;
 
         // Build the rule with only non-empty parameters
         const params = [
-          'chain=forward',
+          `chain=${chain}`,
           srcParam,
           dstParam,
           `connection-state=${connectionState}`,
@@ -156,9 +223,9 @@ export function RuleEditor({
 # Total rules: ${rules.length}
 #
 # INSTRUCTIONS:
-# 1. First, create address lists for each network entity referenced in your rules
-# 2. Update the placeholder IP addresses (192.168.x.x) with your actual network addresses
-# 3. Then apply the firewall filter rules
+# 1. First, apply the address lists below (auto-generated from this network's
+#    VLAN subnets / host IPs — check they match your actual lab addressing)
+# 2. Then apply the firewall filter rules
 #
 # Step 1: Define Address Lists
 # =============================
@@ -254,6 +321,13 @@ ${mikrotikConfig}
         </CardContent>
       </Card>
 
+      <AddressListManager
+        nodes={nodes}
+        addressLists={addressLists}
+        onAddAddressList={onAddAddressList}
+        onDeleteAddressList={onDeleteAddressList}
+      />
+
       {/* Add rule form */}
       <Card>
         <CardHeader>
@@ -263,7 +337,7 @@ ${mikrotikConfig}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Bron</label>
               <Select value={sourceId} onValueChange={setSourceId}>
@@ -275,6 +349,11 @@ ${mikrotikConfig}
                   {availableNodes.map(node => (
                     <SelectItem key={node.id} value={node.id}>
                       {node.name}
+                    </SelectItem>
+                  ))}
+                  {addressLists.map(list => (
+                    <SelectItem key={list.id} value={list.id}>
+                      📋 {list.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -289,45 +368,71 @@ ${mikrotikConfig}
                 </SelectTrigger>
                 <SelectContent className="bg-popover border border-border">
                   <SelectItem value="ANY_VLAN">ANY VLAN</SelectItem>
-                  {availableNodes.filter(n => n.id !== sourceId).map(node => (
+                  {destinationNodes.filter(n => n.id !== sourceId).map(node => (
                     <SelectItem key={node.id} value={node.id}>
-                      {node.name}
+                      {node.type === 'router' ? `${node.name} (beheer)` : node.name}
+                    </SelectItem>
+                  ))}
+                  {addressLists.filter(l => l.id !== sourceId).map(list => (
+                    <SelectItem key={list.id} value={list.id}>
+                      📋 {list.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Type</label>
-              <Select value={connectionType} onValueChange={(v: 'new' | 'related') => setConnectionType(v)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-popover border border-border">
-                  <SelectItem value="new">New</SelectItem>
-                  <SelectItem value="related">Related</SelectItem>
-                </SelectContent>
-              </Select>
+              {routerNode && destinationId === routerNode.id && (
+                <p className="text-xs text-muted-foreground">
+                  Optioneel: dit is een chain <strong>input</strong>-regel (toegang tot de router zelf), geen
+                  verplicht onderdeel — de meeste oefeningen gebruiken enkel VLAN/host-bestemmingen.
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-medium">Actie</label>
-              <Select value={action} onValueChange={(v: 'allow' | 'drop') => setAction(v)}>
+              <Select value={action} onValueChange={(v: RuleAction) => setAction(v)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-popover border border-border">
                   <SelectItem value="allow">Allow</SelectItem>
                   <SelectItem value="drop">Drop</SelectItem>
+                  <SelectItem value="reject">Reject</SelectItem>
                 </SelectContent>
               </Select>
+              {action === 'reject' && (
+                <p className="text-xs text-muted-foreground">
+                  Reject stuurt een actieve weigering terug; Drop negeert het pakket stil.
+                </p>
+              )}
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Connection state(s)</label>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {CONNECTION_STATE_OPTIONS.map(opt => (
+                <label
+                  key={opt.value}
+                  className="flex items-start gap-2 p-2 rounded-lg border border-border cursor-pointer hover:bg-muted/50"
+                  title={opt.hint}
+                >
+                  <Checkbox
+                    checked={connectionStates.includes(opt.value)}
+                    onCheckedChange={(checked) => toggleConnectionState(opt.value, checked === true)}
+                  />
+                  <span className="text-sm">{opt.label}</span>
+                </label>
+              ))}
+            </div>
+            {connectionStates.length === 0 && (
+              <p className="text-xs text-destructive">Selecteer minstens één connection state.</p>
+            )}
           </div>
 
           <Button
             onClick={handleAddRule}
-            disabled={!sourceId || !destinationId}
+            disabled={!sourceId || !destinationId || connectionStates.length === 0}
             className="w-full"
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -366,7 +471,7 @@ ${mikrotikConfig}
             </div>
           ) : (
             <div className="space-y-2">
-              {rules.sort((a, b) => a.order - b.order).map((rule, index) => (
+              {[...rules].sort((a, b) => a.order - b.order).map((rule, index) => (
                 <div
                   key={rule.id}
                   draggable
@@ -389,9 +494,15 @@ ${mikrotikConfig}
                     <ArrowRight className="w-4 h-4 text-muted-foreground" />
                     <Badge variant="outline">{getNodeName(rule.destinationId)}</Badge>
 
-                    <Badge variant="secondary" className="ml-2">
-                      {rule.connectionType}
-                    </Badge>
+                    {nodes.find(n => n.id === rule.destinationId)?.type === 'router' && (
+                      <Badge variant="outline" className="border-dashed">chain: input</Badge>
+                    )}
+
+                    {rule.connectionStates.map(state => (
+                      <Badge key={state} variant="secondary" className="ml-2">
+                        {state}
+                      </Badge>
+                    ))}
 
                     <Badge
                       className={cn(
@@ -402,6 +513,8 @@ ${mikrotikConfig}
                     >
                       {rule.action === 'allow' ? (
                         <ShieldCheck className="w-3 h-3 mr-1" />
+                      ) : rule.action === 'reject' ? (
+                        <ShieldAlert className="w-3 h-3 mr-1" />
                       ) : (
                         <ShieldX className="w-3 h-3 mr-1" />
                       )}
@@ -423,6 +536,16 @@ ${mikrotikConfig}
           )}
         </CardContent>
       </Card>
+
+      {activeScenario && (
+        <ScenarioSelfTest
+          scenario={activeScenario}
+          nodes={nodes}
+          rules={rules}
+          firewallPolicy={firewallPolicy}
+          addressLists={addressLists}
+        />
+      )}
     </div>
   );
 }

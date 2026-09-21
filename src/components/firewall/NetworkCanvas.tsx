@@ -88,8 +88,15 @@ export function NetworkCanvas({
   }, []);
 
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
-    // Start panning when clicking on empty canvas area
-    if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === 'svg' || (e.target as HTMLElement).tagName === 'rect' || (e.target as HTMLElement).tagName === 'path') {
+    // Start panning when clicking on empty canvas area. The background grid
+    // and connection-line <svg> layers have pointer-events:none (so clicks
+    // reach nodes drawn on top of them), which means a click on empty space
+    // never actually lands on those <svg>/<rect>/<path> elements — it lands
+    // on the pan/zoom wrapper <div> right behind them. Marking that wrapper
+    // (and the canvas root) explicitly is what the tagName check above was
+    // trying, and failing, to detect.
+    const target = e.target as HTMLElement;
+    if (target.dataset.panSurface === 'true') {
       setIsPanning(true);
       setPanStart({ x: e.clientX, y: e.clientY });
     }
@@ -100,6 +107,7 @@ export function NetworkCanvas({
   return (
     <div
       ref={canvasRef}
+      data-pan-surface="true"
       className={`relative w-full h-[700px] bg-gradient-to-br from-background to-muted/30 rounded-xl border border-border overflow-hidden ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
       onClick={() => !isPanning && onSelectNode(null)}
       onMouseDown={handleCanvasMouseDown}
@@ -149,6 +157,7 @@ export function NetworkCanvas({
 
       {/* Zoomable and pannable content wrapper */}
       <div
+        data-pan-surface="true"
         className="absolute inset-0 origin-center transition-transform duration-100"
         style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
       >

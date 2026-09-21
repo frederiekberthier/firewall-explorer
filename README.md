@@ -6,7 +6,6 @@ doorkomt of niet.
 
 **Probeer het uit:** [graduaatiot.be/firewall](https://www.graduaatiot.be/firewall/)
 
-<!-- ![Screenshot van de simulator](docs/screenshot.png) -->
 
 ---
 

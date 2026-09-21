@@ -62,6 +62,10 @@ export function SimulationPanel({
   const checkRules = useCallback((srcId: string, dstId: string, isReply: boolean): RuleCheckResult[] => {
     const results: RuleCheckResult[] = [];
 
+    // Get source and destination nodes
+    const sourceNode = nodes.find(n => n.id === srcId);
+    const destNode = nodes.find(n => n.id === dstId);
+
     for (const rule of rules.sort((a, b) => a.order - b.order)) {
       const srcName = getNodeName(rule.sourceId);
       const dstName = getNodeName(rule.destinationId);
@@ -105,20 +109,33 @@ export function SimulationPanel({
       }
     }
 
-    // If no rule matched, apply default policy
+    // If no rule matched, check security rules before applying default policy
     if (results.length === 0 || results.every(r => !r.matched)) {
-      const defaultAction = firewallPolicy === 'allow-all' ? 'allow' : 'drop';
-      const policyName = firewallPolicy === 'allow-all' ? 'ALLOW (default allow)' : 'DENY (default deny)';
-      results.push({
-        ruleId: 'default',
-        matched: true,
-        action: defaultAction,
-        reason: `Geen matchende regel gevonden. Default policy: ${policyName}`
-      });
+      // Security rule: Block new connections from internet to internal networks (VLAN/host)
+      // unless explicitly allowed by a rule
+      if (!isReply && sourceNode?.type === 'internet' &&
+        (destNode?.type === 'vlan' || destNode?.type === 'host')) {
+        results.push({
+          ruleId: 'security-internet-block',
+          matched: true,
+          action: 'drop',
+          reason: `SECURITY: Nieuw verkeer van Internet naar interne netwerken is standaard GEBLOKKEERD (geen expliciete allow regel gevonden)`
+        });
+      } else {
+        // Apply default policy
+        const defaultAction = firewallPolicy === 'allow-all' ? 'allow' : 'drop';
+        const policyName = firewallPolicy === 'allow-all' ? 'ALLOW (default allow)' : 'DENY (default deny)';
+        results.push({
+          ruleId: 'default',
+          matched: true,
+          action: defaultAction,
+          reason: `Geen matchende regel gevonden. Default policy: ${policyName}`
+        });
+      }
     }
 
     return results;
-  }, [rules, getNodeName, firewallPolicy]);
+  }, [rules, nodes, getNodeName, firewallPolicy]);
 
   const startSimulation = useCallback(() => {
     if (!sourceId || !destinationId) return;
@@ -217,6 +234,18 @@ export function SimulationPanel({
                   <Badge className="bg-green-600">Allow All (Default Allow)</Badge>
                 </>
               )}
+            </div>
+          </div>
+
+          {/* Security rule info */}
+          <div className="p-3 bg-orange-500/10 rounded-lg border border-orange-500/20">
+            <div className="flex items-start gap-2">
+              <ShieldX className="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" />
+              <div className="text-xs text-foreground">
+                <strong className="text-orange-600">Security regel:</strong> Nieuw verkeer van Internet naar
+                interne netwerken (VLAN/Host) wordt <strong>altijd geblokkeerd</strong>, tenzij je
+                een expliciete ALLOW regel hebt gemaakt.
+              </div>
             </div>
           </div>
 

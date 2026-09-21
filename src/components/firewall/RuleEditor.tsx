@@ -234,6 +234,26 @@ ${mikrotikConfig}
         </CardContent>
       </Card>
 
+      {/* Security rule warning */}
+      <Card className="border-2 border-orange-500/30 bg-orange-500/5">
+        <CardContent className="pt-6">
+          <div className="flex items-start gap-3">
+            <ShieldX className="w-5 h-5 text-orange-600 mt-0.5 flex-shrink-0" />
+            <div className="space-y-2">
+              <h4 className="font-semibold text-orange-600">Belangrijke Security Regel</h4>
+              <p className="text-sm text-foreground">
+                Nieuw verkeer van <strong>Internet</strong> naar interne netwerken (<strong>VLAN</strong> of <strong>Host</strong>)
+                wordt <strong>altijd standaard geblokkeerd</strong>, ongeacht de gekozen firewall strategie.
+              </p>
+              <p className="text-sm text-foreground">
+                💡 Wil je inkomend internetverkeer toestaan? Maak dan een expliciete <strong className="text-green-600">ALLOW</strong> regel
+                met Internet als bron en je VLAN of Host als bestemming.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Add rule form */}
       <Card>
         <CardHeader>

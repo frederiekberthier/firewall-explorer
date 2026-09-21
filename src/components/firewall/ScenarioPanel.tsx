@@ -12,7 +12,8 @@ import {
   DialogTitle,
   DialogTrigger
 } from '@/components/ui/dialog';
-import { BookOpen, Circle, FolderOpen, X, ClipboardPaste } from 'lucide-react';
+import { BookOpen, Circle, FolderOpen, X, ClipboardPaste, Wand2, ChevronDown } from 'lucide-react';
+import { ScenarioWizard } from './scenario-wizard/ScenarioWizard';
 
 interface ScenarioPanelProps {
   activeScenario: Scenario | null;
@@ -35,14 +36,22 @@ function isValidScenario(value: unknown): value is Scenario {
   return true;
 }
 
+type PickerMode = 'list' | 'wizard';
+
 function ScenarioPicker({ onLoadScenario }: { onLoadScenario: (scenario: Scenario) => void }) {
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<PickerMode>('list');
   const [pasted, setPasted] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const handlePick = (scenario: Scenario) => {
     onLoadScenario(scenario);
     setOpen(false);
+  };
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (!nextOpen) setMode('list');
   };
 
   const handleLoadPasted = () => {
@@ -61,7 +70,7 @@ function ScenarioPicker({ onLoadScenario }: { onLoadScenario: (scenario: Scenari
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="flex items-center gap-2">
           <FolderOpen className="w-4 h-4" />
@@ -70,46 +79,60 @@ function ScenarioPicker({ onLoadScenario }: { onLoadScenario: (scenario: Scenari
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Scenario laden</DialogTitle>
+          <DialogTitle>{mode === 'wizard' ? 'Nieuw scenario opbouwen' : 'Scenario laden'}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3">
-          <h4 className="text-sm font-medium">Catalogus</h4>
-          <div className="space-y-2">
-            {SCENARIOS.map(scenario => (
-              <button
-                key={scenario.meta.id}
-                onClick={() => handlePick(scenario)}
-                className="w-full text-left p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm">{scenario.meta.title}</span>
-                  {scenario.meta.difficulty && (
-                    <Badge variant="outline" className="text-[10px]">{scenario.meta.difficulty}</Badge>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{scenario.brief.markdown}</p>
-              </button>
-            ))}
-          </div>
-        </div>
+        {mode === 'wizard' ? (
+          <ScenarioWizard onLoadScenario={handlePick} onCancel={() => setMode('list')} />
+        ) : (
+          <>
+            <div className="space-y-3">
+              <h4 className="text-sm font-medium">Catalogus</h4>
+              <div className="space-y-2">
+                {SCENARIOS.map(scenario => (
+                  <button
+                    key={scenario.meta.id}
+                    onClick={() => handlePick(scenario)}
+                    className="w-full text-left p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm">{scenario.meta.title}</span>
+                      {scenario.meta.difficulty && (
+                        <Badge variant="outline" className="text-[10px]">{scenario.meta.difficulty}</Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{scenario.brief.markdown}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
 
-        <div className="space-y-2 pt-2 border-t border-border">
-          <h4 className="text-sm font-medium flex items-center gap-2">
-            <ClipboardPaste className="w-4 h-4" />
-            Of plak een scenario (JSON)
-          </h4>
-          <Textarea
-            value={pasted}
-            onChange={(e) => { setPasted(e.target.value); setError(null); }}
-            placeholder='{"meta": {"id": "...", "title": "..."}, "brief": {...}, "topology": {...}}'
-            className="font-mono text-xs h-32"
-          />
-          {error && <p className="text-xs text-destructive">{error}</p>}
-          <Button size="sm" onClick={handleLoadPasted} disabled={!pasted.trim()}>
-            Scenario inladen
-          </Button>
-        </div>
+            <Button onClick={() => setMode('wizard')} className="flex items-center gap-2">
+              <Wand2 className="w-4 h-4" />
+              Nieuw scenario opbouwen
+            </Button>
+
+            <details className="pt-2 border-t border-border group">
+              <summary className="text-sm font-medium flex items-center gap-2 cursor-pointer select-none list-none">
+                <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180" />
+                <ClipboardPaste className="w-4 h-4" />
+                Geavanceerd: JSON plakken
+              </summary>
+              <div className="space-y-2 mt-2">
+                <Textarea
+                  value={pasted}
+                  onChange={(e) => { setPasted(e.target.value); setError(null); }}
+                  placeholder='{"meta": {"id": "...", "title": "..."}, "brief": {...}, "topology": {...}}'
+                  className="font-mono text-xs h-32"
+                />
+                {error && <p className="text-xs text-destructive">{error}</p>}
+                <Button size="sm" onClick={handleLoadPasted} disabled={!pasted.trim()}>
+                  Scenario inladen
+                </Button>
+              </div>
+            </details>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

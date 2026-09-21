@@ -82,6 +82,79 @@ describe('lintRules', () => {
   });
 });
 
+describe('runIntent wildcards', () => {
+  it('passes an ANY_VLAN intent only when every VLAN individually satisfies it', () => {
+    const intent = { id: 'w1', requirementId: 'R1', description: '', from: 'ANY_VLAN', to: 'Internet', expect: 'allow' as const };
+
+    // Only DATA has a working rule (with reply) — SEC has none.
+    const rules: FirewallRule[] = [
+      rule({ id: 'r1', sourceId: data.id, destinationId: internet.id, connectionStates: ['new'], order: 0 }),
+      rule({ id: 'r2', sourceId: data.id, destinationId: internet.id, connectionStates: ['established', 'related'], order: 1 })
+    ];
+
+    const failing = runIntent(intent, nodes, rules, 'block-all');
+    expect(failing.pass).toBe(false);
+    expect(failing.reason).toContain('SEC');
+
+    const rulesForBoth: FirewallRule[] = [
+      ...rules,
+      rule({ id: 'r3', sourceId: sec.id, destinationId: internet.id, connectionStates: ['new'], order: 2 }),
+      rule({ id: 'r4', sourceId: sec.id, destinationId: internet.id, connectionStates: ['established', 'related'], order: 3 })
+    ];
+    const passing = runIntent(intent, nodes, rulesForBoth, 'block-all');
+    expect(passing.pass).toBe(true);
+  });
+
+  it('fails an ANY_VLAN drop intent when even one VLAN is wrongly allowed', () => {
+    const intent = { id: 'w2', requirementId: 'R1', description: '', from: 'ANY_VLAN', to: 'SEC', expect: 'drop' as const };
+    const rules: FirewallRule[] = [rule({ id: 'r1', sourceId: data.id, destinationId: sec.id, order: 0 })];
+
+    const result = runIntent(intent, nodes, rules, 'block-all');
+    expect(result.pass).toBe(false);
+  });
+
+  it('reports "no matching nodes" when a wildcard has nothing to expand to', () => {
+    const intent = { id: 'w3', requirementId: 'R1', description: '', from: 'ANY_HOST', to: 'Internet', expect: 'allow' as const };
+    // `nodes` has no host-type node at all.
+    const result = runIntent(intent, nodes, [], 'block-all');
+    expect(result.pass).toBe(false);
+  });
+});
+
+describe('runIntent with an explicit state', () => {
+  it('passes a state:"new" intent even without an established/related rule', () => {
+    const intent = { id: 'n1', requirementId: 'R1', description: '', from: 'DATA', to: 'Internet', expect: 'allow' as const, state: 'new' as const };
+    const rules: FirewallRule[] = [rule({ id: 'r1', connectionStates: ['new'] })];
+
+    const result = runIntent(intent, nodes, rules, 'block-all');
+    expect(result.pass).toBe(true);
+  });
+
+  it('fails a state:"established" intent when there is only a new-traffic rule', () => {
+    const intent = { id: 'e1', requirementId: 'R1', description: '', from: 'DATA', to: 'Internet', expect: 'allow' as const, state: 'established' as const };
+    const rules: FirewallRule[] = [rule({ id: 'r1', connectionStates: ['new'] })];
+
+    const result = runIntent(intent, nodes, rules, 'block-all');
+    expect(result.pass).toBe(false);
+  });
+
+  it('passes a state:"established" intent when a matching established/related rule exists, even without testing "new" separately', () => {
+    const intent = { id: 'e2', requirementId: 'R1', description: '', from: 'DATA', to: 'Internet', expect: 'allow' as const, state: 'established' as const };
+    const rules: FirewallRule[] = [rule({ id: 'r1', connectionStates: ['established', 'related'] })];
+
+    const result = runIntent(intent, nodes, rules, 'block-all');
+    expect(result.pass).toBe(true);
+  });
+
+  it('a legacy intent without any state still requires the full round trip', () => {
+    const intent = { id: 'l1', requirementId: 'R1', description: '', from: 'DATA', to: 'Internet', expect: 'allow' as const };
+    const rules: FirewallRule[] = [rule({ id: 'r1', connectionStates: ['new'] })];
+
+    const result = runIntent(intent, nodes, rules, 'block-all');
+    expect(result.pass).toBe(false);
+  });
+});
+
 describe('gradeScenario', () => {
   it('reports all intents and lint findings together', () => {
     const report = gradeScenario(SCENARIOS[0], nodes, [], 'block-all');

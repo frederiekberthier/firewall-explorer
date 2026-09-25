@@ -127,7 +127,8 @@ function checkPair(
   }
 
   // expect === 'allow': the request must get through AND come back
-  // (established/related) — this is the exact behavior F1 used to get wrong.
+  // (established/related). A rule that only allows 'new' is not enough: the
+  // reply would then hit the default policy and be dropped.
   if (!forwardAllowed) {
     return { pass: false, reason: `Nieuw verkeer werd geblokkeerd: ${forwardVerdict.reason}` };
   }
@@ -208,7 +209,7 @@ export function runIntent(
 
 /**
  * Static hygiene checks over the ruleset itself, independent of any
- * scenario — the "linter" from the brief. Deliberately conservative: it
+ * scenario (a small "linter"). Deliberately conservative: it
  * only flags rules that are unambiguously dead (identical source/destination
  * to an earlier, at-least-as-broad rule), not every wildcard-subsumption case.
  */

@@ -43,28 +43,31 @@ ook als tekening van je netwerk kan gebruiken.
 **2. Firewallregels schrijven.** Je kiest eerst je strategie: alles toestaan
 tenzij geblokkeerd, of alles blokkeren tenzij toegestaan. Daarna schrijf je
 regels met een bron, een bestemming, een soort verkeer en een actie. De volgorde
-bepaalt alles, dus je kan regels verslepen.
+bepaalt alles, dus je kan regels verslepen of met de pijltjes verschuiven.
 
 **3. Simuleren.** Je kiest een afzender en een bestemming en stuurt een pakket.
-De tool toont de volledige evaluatie en het eindoordeel: toegestaan of
-geblokkeerd.
+De tool toont de volledige evaluatie, ook van het antwoordpakket op de terugweg,
+en het eindoordeel: toegestaan of geblokkeerd.
 
 Je regels kan je exporteren naar RouterOS-configuratie, zodat je ze in het labo
 kan vergelijken met wat je op de MikroTik intikt.
 
+**Oefenscenario's.** In plaats van zelf een netwerk te bouwen kan je een scenario
+inladen: het netwerk staat klaar en je krijgt een opdracht met eisen. Een zelftest
+toont live welke eisen je regels al halen, en wijst op regels die nooit kunnen
+matchen. Docenten kunnen met de wizard zelf scenario's opbouwen.
+
 ## Status
 
-Dit is lesmateriaal in ontwikkeling, geen afgewerkt product. Er wordt actief
-gewerkt aan:
+Dit is lesmateriaal in ontwikkeling, geen afgewerkt product. Wat er intussen
+in zit:
 
-- een echte tweede evaluatie van het antwoordpakket, met zichtbare
-  connectietabel, zodat established en related verkeer kloppen
-- IP-adressen en subnetten op de netwerkelementen, en daarmee een export die je
-  rechtstreeks in WebFig kan plakken
-- de chains `forward` en `input`, zodat je ook kan oefenen op wie de router zelf
-  mag beheren
-- **oefenscenario's**: een opdracht inladen, het netwerk staat klaar, en je
-  controleert zelf of je regels aan de eisen voldoen
+- stateful evaluatie: het antwoordpakket wordt apart geëvalueerd, met een
+  zichtbare connectietabel, zodat established en related verkeer kloppen
+- IP-adressen en subnetten op VLAN's en hosts, ook in de RouterOS-export
+- de chains `forward` en `input`: kies de router als bestemming om te oefenen
+  op wie de router zelf mag beheren
+- oefenscenario's met een zelftest, en een wizard om er zelf te maken
 - automatische feedback op je ruleset
 
 Bugmeldingen en suggesties zijn welkom via de
@@ -79,11 +82,14 @@ npm install
 npm run dev
 ```
 
-De app draait daarna op `http://localhost:5173`.
+De app draait daarna op `http://localhost:8080/firewall/`. Is poort 8080 al in
+gebruik, dan kiest Vite de volgende vrije poort; het juiste adres staat in de
+terminal.
 
-Bouwen voor productie:
+Tests draaien en bouwen voor productie:
 
 ```bash
+npm test           # unit- en componenttests (Vitest)
 npm run build      # output in dist/
 ```
 
@@ -95,9 +101,6 @@ Suggesties voor nieuwe oefenscenario's zijn het meest welkom. Een goed scenario
 beschrijft een herkenbare situatie (een kantoor met camerabewaking, een
 co-workingspace met gastennetwerk, een magazijn met robots) en een reeks eisen
 waaraan de firewall moet voldoen.
-
-Voor wie aan de code wil werken: technische documentatie staat in
-[`docs/BRIEF.md`](docs/BRIEF.md).
 
 ## Licentie en gebruik
 

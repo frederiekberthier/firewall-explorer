@@ -22,34 +22,89 @@ export interface ScenarioReport {
   lintFindings: LintFinding[];
 }
 
-function findNodeByName(nodes: NetworkNode[], name: string): NetworkNode | undefined {
-  return nodes.find(n => n.name === name);
+/**
+ * An intent's `from`/`to` is normally an exact node name, but can also be
+ * one of these wildcard tokens (same vocabulary as a rule's source/
+ * destination in the rule editor) to mean "this must hold for every node of
+ * this kind" — e.g. `from: 'ANY_VLAN', to: 'Internet', expect: 'allow'`
+ * checks that *each* VLAN individually can reach the internet, without
+ * having to write one requirement per VLAN.
+ */
+export const INTENT_WILDCARD_TOKENS = ['ANY_VLAN', 'ANY_HOST', 'ANY_INTERNET', 'ANY'] as const;
+export type IntentWildcardToken = typeof INTENT_WILDCARD_TOKENS[number];
+
+export function isIntentWildcardToken(value: string): value is IntentWildcardToken {
+  return (INTENT_WILDCARD_TOKENS as readonly string[]).includes(value);
+}
+
+/** Resolves an intent's `from`/`to` to the concrete node(s) it refers to. */
+function resolveIntentRef(ref: string, nodes: NetworkNode[]): NetworkNode[] {
+  if (!isIntentWildcardToken(ref)) {
+    const node = nodes.find(n => n.name === ref);
+    return node ? [node] : [];
+  }
+  switch (ref) {
+    case 'ANY_VLAN': return nodes.filter(n => n.type === 'vlan');
+    case 'ANY_HOST': return nodes.filter(n => n.type === 'host');
+    case 'ANY_INTERNET': return nodes.filter(n => n.type === 'internet');
+    case 'ANY': return nodes.filter(n => n.type !== 'router');
+  }
 }
 
 /**
- * Checks one intent against the current topology/ruleset — pure, reuses the
- * same evaluation engine the simulator itself runs (src/lib/firewallEngine.ts),
- * so "does this ruleset satisfy the requirement" and "what does the
- * simulator show when you test it by hand" can never disagree.
+ * Checks one concrete source/destination pair against the ruleset — the
+ * same evaluation engine the simulator itself runs
+ * (src/lib/firewallEngine.ts), so "does this ruleset satisfy the
+ * requirement" and "what does the simulator show when you test it by hand"
+ * can never disagree.
+ *
+ * When `intent.state` is explicitly set, only that single phase is tested
+ * (this is what the scenario wizard always produces, so a requirement can
+ * separately say "nieuw verkeer mag" vs. "bestaand verkeer mag" and
+ * students learn to reason about the two phases step by step). Without a
+ * `state` (older/hand-written scenarios), the original combined behavior is
+ * kept: `expect: 'drop'` only checks the request, `expect: 'allow'` checks
+ * the full round trip (request AND reply must both get through) — a rule
+ * that only lets the request in without a matching established/related rule
+ * does not satisfy "mag verbinden met".
  */
-export function runIntent(
-  intent: ScenarioIntent,
-  nodes: NetworkNode[],
+function checkPair(
+  fromNode: NetworkNode,
+  toNode: NetworkNode,
   rules: FirewallRule[],
+  addressLists: AddressList[],
   firewallPolicy: FirewallPolicy,
-  addressLists: AddressList[] = []
-): IntentResult {
-  const fromNode = findNodeByName(nodes, intent.from);
-  const toNode = findNodeByName(nodes, intent.to);
+  intent: ScenarioIntent,
+  nodes: NetworkNode[]
+): { pass: boolean; reason: string } {
+  const { expect, state } = intent;
 
-  if (!fromNode || !toNode) {
+  if (state === 'new' || state === 'established') {
+    const isReply = state === 'established';
+    const result = checkRules({
+      nodes,
+      rules,
+      addressLists,
+      firewallPolicy,
+      sourceId: fromNode.id,
+      destinationId: toNode.id,
+      isReply
+    });
+    const verdict = result[result.length - 1];
+    const allowed = verdict.action === 'allow';
+    const pass = expect === 'allow' ? allowed : !allowed;
+    const label = isReply ? 'Bestaand (established/related) verkeer' : 'Nieuw verkeer';
     return {
-      intent,
-      pass: false,
-      reason: `Kan "${intent.from}" en/of "${intent.to}" niet terugvinden in het huidige netwerk.`
+      pass,
+      reason: pass
+        ? verdict.reason
+        : expect === 'allow'
+          ? `${label} werd geblokkeerd: ${verdict.reason}`
+          : `${label} werd onverwacht toegelaten: ${verdict.reason}`
     };
   }
 
+  // No explicit state: legacy combined behavior.
   const forward = checkRules({
     nodes,
     rules,
@@ -62,9 +117,8 @@ export function runIntent(
   const forwardVerdict = forward[forward.length - 1];
   const forwardAllowed = forwardVerdict.action === 'allow';
 
-  if (intent.expect === 'drop') {
+  if (expect === 'drop') {
     return {
-      intent,
       pass: !forwardAllowed,
       reason: forwardAllowed
         ? `Verkeer werd onverwacht toegelaten: ${forwardVerdict.reason}`
@@ -75,11 +129,7 @@ export function runIntent(
   // expect === 'allow': the request must get through AND come back
   // (established/related) — this is the exact behavior F1 used to get wrong.
   if (!forwardAllowed) {
-    return {
-      intent,
-      pass: false,
-      reason: `Nieuw verkeer werd geblokkeerd: ${forwardVerdict.reason}`
-    };
+    return { pass: false, reason: `Nieuw verkeer werd geblokkeerd: ${forwardVerdict.reason}` };
   }
 
   const reply = checkRules({
@@ -95,11 +145,64 @@ export function runIntent(
   const replyAllowed = replyVerdict.action === 'allow';
 
   return {
-    intent,
     pass: replyAllowed,
     reason: replyAllowed
       ? forwardVerdict.reason
       : `Verzoek werd toegelaten, maar het antwoord niet: ${replyVerdict.reason}`
+  };
+}
+
+export function runIntent(
+  intent: ScenarioIntent,
+  nodes: NetworkNode[],
+  rules: FirewallRule[],
+  firewallPolicy: FirewallPolicy,
+  addressLists: AddressList[] = []
+): IntentResult {
+  const fromNodes = resolveIntentRef(intent.from, nodes);
+  const toNodes = resolveIntentRef(intent.to, nodes);
+
+  if (fromNodes.length === 0 || toNodes.length === 0) {
+    return {
+      intent,
+      pass: false,
+      reason: `Kan "${intent.from}" en/of "${intent.to}" niet terugvinden in het huidige netwerk.`
+    };
+  }
+
+  const pairs: Array<[NetworkNode, NetworkNode]> = [];
+  for (const fromNode of fromNodes) {
+    for (const toNode of toNodes) {
+      if (fromNode.id !== toNode.id) pairs.push([fromNode, toNode]);
+    }
+  }
+
+  if (pairs.length === 0) {
+    return {
+      intent,
+      pass: false,
+      reason: `"${intent.from}" en "${intent.to}" verwijzen naar hetzelfde netwerk-element.`
+    };
+  }
+
+  // A wildcard intent (e.g. "ANY_VLAN -> Internet") must hold for *every*
+  // matching pair — one failing VLAN means the requirement isn't met yet.
+  let lastReason = '';
+  for (const [fromNode, toNode] of pairs) {
+    const result = checkPair(fromNode, toNode, rules, addressLists, firewallPolicy, intent, nodes);
+    if (!result.pass) {
+      const prefix = pairs.length > 1 ? `${fromNode.name} → ${toNode.name}: ` : '';
+      return { intent, pass: false, reason: prefix + result.reason };
+    }
+    lastReason = result.reason;
+  }
+
+  return {
+    intent,
+    pass: true,
+    reason: pairs.length > 1
+      ? `Getest voor ${pairs.length} combinatie(s) (${fromNodes.map(n => n.name).join(', ')} → ${toNodes.map(n => n.name).join(', ')}), telkens in orde.`
+      : lastReason
   };
 }
 

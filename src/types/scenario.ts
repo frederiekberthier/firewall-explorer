@@ -19,11 +19,22 @@ export interface ScenarioTopology {
  * A machine-checkable behavior test tied to one requirement: "traffic
  * initiated from `from` to `to` should end up allowed / dropped". Node
  * names are resolved against the loaded topology at check time (VLAN/host
- * names, or "Internet"/"Router").
+ * names, or "Internet"/"Router") — or one of the wildcard tokens
+ * `'ANY_VLAN' | 'ANY_HOST' | 'ANY_INTERNET' | 'ANY'` (see
+ * `src/lib/scenarioGrading.ts`), which expands to *every* matching node and
+ * requires the check to pass for each one individually.
  *
- * `expect: 'allow'` checks the full round trip (the request AND the reply
- * must both get through) — a rule that only lets the request in without a
- * matching established/related rule does not satisfy "mag naar X".
+ * `state` picks which phase of the connection this intent tests:
+ * - `'new'` (default when omitted): only the initial request.
+ * - `'established'`: only the return traffic (established/related) — lets a
+ *   scenario test "a new connection" and "the reply to it" as two separate,
+ *   explicit requirements instead of bundling both into one check, so
+ *   students learn to reason about the two phases step by step.
+ *
+ * For backward compatibility, an intent with no `state` at all (e.g. an
+ * older hand-written scenario) keeps the original combined behavior:
+ * `expect: 'allow'` checks the full round trip (request AND reply must both
+ * get through), `expect: 'drop'` checks only the request.
  */
 export interface ScenarioIntent {
   id: string;
@@ -32,6 +43,7 @@ export interface ScenarioIntent {
   from: string;
   to: string;
   expect: 'allow' | 'drop';
+  state?: 'new' | 'established';
 }
 
 export interface Scenario {

@@ -474,7 +474,8 @@ ${mikrotikConfig}
             <div>
               <CardTitle className="text-lg">Firewall regels ({rules.length})</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Versleep regels of gebruik de pijltjes om de volgorde aan te passen. Regels worden van boven naar beneden geëvalueerd. Standaard geldt een allow policy.
+                Versleep regels of gebruik de pijltjes om de volgorde aan te passen. Regels worden van boven naar beneden geëvalueerd. Matcht geen enkele regel, dan geldt je default policy:{' '}
+                <strong>{firewallPolicy === 'block-all' ? 'Block All' : 'Allow All'}</strong>.
               </p>
             </div>
             {rules.length > 0 && (

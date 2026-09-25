@@ -33,7 +33,7 @@ export function useNetworkState() {
     setNodes(prev => {
       let x = 400;
       let y = 100;
-      let resolvedParentId: string | null = ROUTER_ID;
+      let resolvedParentId: string = ROUTER_ID;
       let vlanId: number | undefined;
       let subnet: string | undefined;
       let gateway: string | undefined;
@@ -65,7 +65,7 @@ export function useNetworkState() {
           const offset = (existingChildren - Math.floor(existingChildren / 2)) * 120;
           x = parentNode.x + offset;
           y = parentNode.y + 150;
-          resolvedParentId = selectedNodeId;
+          resolvedParentId = parentNode.id;
         } else {
           // Fallback: attach directly to the main router
           const routerNode = prev.find(n => n.id === ROUTER_ID);

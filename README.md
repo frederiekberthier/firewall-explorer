@@ -90,6 +90,7 @@ Tests draaien en bouwen voor productie:
 
 ```bash
 npm test           # unit- en componenttests (Vitest)
+npm run typecheck  # TypeScript-controle (Vite zelf controleert geen types)
 npm run build      # output in dist/
 ```
 

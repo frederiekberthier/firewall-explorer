@@ -151,7 +151,7 @@ export function buildScenarioFromDraft(draft: WizardDraft): Scenario {
   }));
 
   const intents: ScenarioIntent[] = filledRequirements
-    .map((r, i) => {
+    .map((r, i): ScenarioIntent | null => {
       const choice = draft.intentChoices[r.key];
       if (!choice) return null;
       // `state` defaults to 'new' in the UI's Select display but is only

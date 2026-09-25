@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { NetworkNode, FirewallRule, FirewallPolicy, ConnState, RuleAction, AddressList } from '@/types/firewall';
 import { Scenario } from '@/types/scenario';
 import { Button } from '@/components/ui/button';
@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Trash2, GripVertical, Plus, ShieldCheck, ShieldX, ShieldAlert, ArrowRight, Download, Shield } from 'lucide-react';
+import { Trash2, GripVertical, Plus, ShieldCheck, ShieldX, ShieldAlert, ArrowRight, Download, Shield, ChevronUp, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getNodeName as getNodeNameForNodes } from '@/lib/nodeNames';
 import { ScenarioSelfTest } from './ScenarioSelfTest';
@@ -52,6 +52,11 @@ export function RuleEditor({
   const [connectionStates, setConnectionStates] = useState<ConnState[]>(['new']);
   const [action, setAction] = useState<RuleAction>('allow');
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  // Set by the up/down buttons: which button should get focus back once the
+  // moved rule has re-rendered at its new position.
+  const [pendingFocus, setPendingFocus] = useState<{ ruleId: string; direction: 'up' | 'down' } | null>(null);
+  const [announcement, setAnnouncement] = useState('');
+  const fieldId = useId();
 
   const availableNodes = nodes.filter(n => n.type !== 'router');
   const routerNode = nodes.find(n => n.type === 'router');
@@ -102,6 +107,27 @@ export function RuleEditor({
   const handleDragEnd = () => {
     setDragIndex(null);
   };
+
+  // Keyboard/touch alternative to drag-and-drop: move a rule one place.
+  const moveRule = (ruleId: string, index: number, direction: 'up' | 'down') => {
+    const target = direction === 'up' ? index - 1 : index + 1;
+    if (target < 0 || target >= rules.length) return;
+    onReorderRules(index, target);
+    setPendingFocus({ ruleId, direction });
+    setAnnouncement(`Regel ${index + 1} verplaatst naar positie ${target + 1} van ${rules.length}.`);
+  };
+
+  // React may re-insert the moved row's DOM node, which drops focus; put it
+  // back on the same button, or on its sibling once the rule hits the top/bottom.
+  useEffect(() => {
+    if (!pendingFocus) return;
+    const { ruleId, direction } = pendingFocus;
+    const other = direction === 'up' ? 'down' : 'up';
+    const button = document.getElementById(`${fieldId}-${ruleId}-${direction}`) as HTMLButtonElement | null;
+    const fallback = document.getElementById(`${fieldId}-${ruleId}-${other}`) as HTMLButtonElement | null;
+    (button && !button.disabled ? button : fallback)?.focus();
+    setPendingFocus(null);
+  }, [rules, pendingFocus, fieldId]);
 
   const getMikrotikAddressParam = (nodeId: string, paramType: 'src' | 'dst') => {
     const prefix = paramType === 'src' ? 'src-address-list' : 'dst-address-list';
@@ -267,7 +293,7 @@ ${mikrotikConfig}
             Kies de standaard actie wanneer een pakket geen enkele regel matcht:
           </p>
           <Select value={firewallPolicy} onValueChange={(v: FirewallPolicy) => onPolicyChange(v)}>
-            <SelectTrigger className="w-full font-medium">
+            <SelectTrigger className="w-full font-medium" aria-label="Default policy">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-popover border border-border">
@@ -339,9 +365,9 @@ ${mikrotikConfig}
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Bron</label>
+              <label htmlFor={`${fieldId}-source`} className="text-sm font-medium">Bron</label>
               <Select value={sourceId} onValueChange={setSourceId}>
-                <SelectTrigger>
+                <SelectTrigger id={`${fieldId}-source`}>
                   <SelectValue placeholder="Selecteer..." />
                 </SelectTrigger>
                 <SelectContent className="bg-popover border border-border">
@@ -361,9 +387,9 @@ ${mikrotikConfig}
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Doel</label>
+              <label htmlFor={`${fieldId}-destination`} className="text-sm font-medium">Doel</label>
               <Select value={destinationId} onValueChange={setDestinationId}>
-                <SelectTrigger>
+                <SelectTrigger id={`${fieldId}-destination`}>
                   <SelectValue placeholder="Selecteer..." />
                 </SelectTrigger>
                 <SelectContent className="bg-popover border border-border">
@@ -389,9 +415,9 @@ ${mikrotikConfig}
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Actie</label>
+              <label htmlFor={`${fieldId}-action`} className="text-sm font-medium">Actie</label>
               <Select value={action} onValueChange={(v: RuleAction) => setAction(v)}>
-                <SelectTrigger>
+                <SelectTrigger id={`${fieldId}-action`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-popover border border-border">
@@ -409,8 +435,8 @@ ${mikrotikConfig}
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Connection state(s)</label>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            <span id={`${fieldId}-states`} className="text-sm font-medium">Connection state(s)</span>
+            <div role="group" aria-labelledby={`${fieldId}-states`} className="grid grid-cols-2 md:grid-cols-3 gap-2">
               {CONNECTION_STATE_OPTIONS.map(opt => (
                 <label
                   key={opt.value}
@@ -444,11 +470,11 @@ ${mikrotikConfig}
       {/* Rules list */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <CardTitle className="text-lg">Firewall regels ({rules.length})</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Versleep regels om de volgorde aan te passen. Regels worden van boven naar beneden geëvalueerd. Standaard geldt een allow policy.
+                Versleep regels of gebruik de pijltjes om de volgorde aan te passen. Regels worden van boven naar beneden geëvalueerd. Standaard geldt een allow policy.
               </p>
             </div>
             {rules.length > 0 && (
@@ -471,6 +497,7 @@ ${mikrotikConfig}
             </div>
           ) : (
             <div className="space-y-2">
+              <p className="sr-only" aria-live="polite">{announcement}</p>
               {[...rules].sort((a, b) => a.order - b.order).map((rule, index) => (
                 <div
                   key={rule.id}
@@ -479,13 +506,40 @@ ${mikrotikConfig}
                   onDragOver={(e) => handleDragOver(e, index)}
                   onDragEnd={handleDragEnd}
                   className={cn(
-                    "flex items-center gap-3 p-3 rounded-lg border bg-card transition-all",
+                    "flex items-center gap-2 sm:gap-3 p-3 rounded-lg border bg-card transition-all",
                     dragIndex === index && "opacity-50 scale-95"
                   )}
                 >
-                  <GripVertical className="w-4 h-4 text-muted-foreground cursor-grab" />
+                  <GripVertical className="hidden sm:block w-4 h-4 flex-shrink-0 text-muted-foreground cursor-grab" aria-hidden="true" />
 
-                  <span className="w-6 h-6 flex items-center justify-center bg-muted rounded text-xs font-mono">
+                  <div className="flex flex-col flex-shrink-0">
+                    <Button
+                      id={`${fieldId}-${rule.id}-up`}
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      disabled={index === 0}
+                      onClick={() => moveRule(rule.id, index, 'up')}
+                      aria-label={`Regel ${index + 1} omhoog verplaatsen`}
+                      title="Omhoog"
+                    >
+                      <ChevronUp className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      id={`${fieldId}-${rule.id}-down`}
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      disabled={index === rules.length - 1}
+                      onClick={() => moveRule(rule.id, index, 'down')}
+                      aria-label={`Regel ${index + 1} omlaag verplaatsen`}
+                      title="Omlaag"
+                    >
+                      <ChevronDown className="w-4 h-4" />
+                    </Button>
+                  </div>
+
+                  <span className="w-6 h-6 flex-shrink-0 flex items-center justify-center bg-muted rounded text-xs font-mono">
                     {index + 1}
                   </span>
 
@@ -526,7 +580,9 @@ ${mikrotikConfig}
                     variant="ghost"
                     size="icon"
                     onClick={() => onDeleteRule(rule.id)}
-                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    aria-label={`Regel ${index + 1} verwijderen`}
+                    title="Verwijderen"
+                    className="flex-shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>

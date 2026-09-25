@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { NetworkNode, Connection, FirewallRule, Phase, SimulationPacket, FirewallPolicy, AddressList } from '@/types/firewall';
 import { Scenario } from '@/types/scenario';
 import { nextVlanId, vlanAddressing, nextHostIp } from '@/lib/addressing';
+import { layoutVlanRow, hostOffset } from '@/lib/layout';
 
 const ROUTER_ID = 'router-main';
 
@@ -214,6 +215,9 @@ export function useNetworkState() {
       newConnections.push({ id: `conn-${internetId}`, fromId: ROUTER_ID, toId: internetId });
     }
 
+    const hostsPerVlan = scenario.topology.vlans.map(v => (Array.isArray(v.hosts) ? v.hosts : []));
+    const vlanXs = layoutVlanRow(hostsPerVlan.map(h => h.length));
+
     scenario.topology.vlans.forEach((vlanDef, vlanIndex) => {
       const vlanNodeId = generateId();
       const vId = nextVlanId(newNodes);
@@ -222,7 +226,7 @@ export function useNetworkState() {
         id: vlanNodeId,
         type: 'vlan',
         name: vlanDef.name,
-        x: 200 + vlanIndex * 200,
+        x: vlanXs[vlanIndex],
         y: 500,
         parentId: ROUTER_ID,
         vlanId: vId,
@@ -232,11 +236,11 @@ export function useNetworkState() {
       newNodes.push(vlanNode);
       newConnections.push({ id: `conn-${vlanNodeId}`, fromId: ROUTER_ID, toId: vlanNodeId });
 
-      const hostNames = Array.isArray(vlanDef.hosts) ? vlanDef.hosts : [];
+      const hostNames = hostsPerVlan[vlanIndex];
       hostNames.forEach((hostName, hostIndex) => {
         const hostId = generateId();
         const ip = nextHostIp(newNodes, vlanNodeId, vlanNode);
-        const offset = (hostIndex - Math.floor(hostNames.length / 2)) * 120;
+        const offset = hostOffset(hostIndex, hostNames.length);
         newNodes.push({
           id: hostId,
           type: 'host',

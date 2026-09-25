@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useNetworkState } from './useNetworkState';
 import { SCENARIOS } from '@/data/scenarios';
+import { HOST_SPACING } from '@/lib/layout';
 
 describe('useNetworkState.loadScenario', () => {
   it('builds a topology with real addressing from a scenario', () => {
@@ -50,6 +51,27 @@ describe('useNetworkState.loadScenario', () => {
 
     expect(result.current.activeScenario).toBeNull();
     expect(result.current.nodes).toHaveLength(1);
+  });
+
+  it('lays out many VLANs centred under the router without overlapping hosts', () => {
+    const { result } = renderHook(() => useNetworkState());
+    const vlans = Array.from({ length: 6 }, (_, i) => ({
+      name: `VLAN${i + 1}`,
+      hosts: [`PC ${i}a`, `PC ${i}b`, `PC ${i}c`]
+    }));
+    act(() => {
+      result.current.loadScenario({ ...SCENARIOS[0], topology: { ...SCENARIOS[0].topology, vlans } });
+    });
+
+    const router = result.current.nodes.find(n => n.type === 'router')!;
+    const vlanXs = result.current.nodes.filter(n => n.type === 'vlan').map(n => n.x);
+    const mean = vlanXs.reduce((sum, x) => sum + x, 0) / vlanXs.length;
+    expect(mean).toBeCloseTo(router.x);
+
+    const hostXs = result.current.nodes.filter(n => n.type === 'host').map(n => n.x).sort((a, b) => a - b);
+    for (let i = 1; i < hostXs.length; i++) {
+      expect(hostXs[i] - hostXs[i - 1]).toBeGreaterThanOrEqual(HOST_SPACING);
+    }
   });
 });
 

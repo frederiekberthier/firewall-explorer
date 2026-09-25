@@ -10,7 +10,7 @@ interface NetworkNodeProps {
   onSelect: () => void;
   onUpdate: (updates: Partial<NetworkNodeType>) => void;
   onDelete: () => void;
-  onDragStart: (e: React.MouseEvent) => void;
+  onDragStart: (e: React.PointerEvent) => void;
   isEditable: boolean;
 }
 
@@ -74,7 +74,7 @@ export const NetworkNodeComponent = memo(function NetworkNodeComponent({
         e.stopPropagation();
         onSelect();
       }}
-      onMouseDown={isEditable && node.type !== 'router' ? onDragStart : undefined}
+      onPointerDown={isEditable && node.type !== 'router' ? onDragStart : undefined}
     >
       <div
         className={cn(
@@ -92,6 +92,8 @@ export const NetworkNodeComponent = memo(function NetworkNodeComponent({
                 e.stopPropagation();
                 setIsEditing(true);
               }}
+              aria-label={`${node.name} hernoemen`}
+              title="Hernoemen"
               className="w-6 h-6 rounded-full bg-card border border-border flex items-center justify-center hover:bg-muted transition-colors"
             >
               <Pencil className="w-3 h-3" />
@@ -101,6 +103,8 @@ export const NetworkNodeComponent = memo(function NetworkNodeComponent({
                 e.stopPropagation();
                 onDelete();
               }}
+              aria-label={`${node.name} verwijderen`}
+              title="Verwijderen"
               className="w-6 h-6 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center hover:opacity-80 transition-opacity"
             >
               <Trash2 className="w-3 h-3" />
@@ -116,15 +120,16 @@ export const NetworkNodeComponent = memo(function NetworkNodeComponent({
             value={editName}
             onChange={(e) => setEditName(e.target.value)}
             className="h-6 w-24 text-xs px-2"
+            aria-label="Nieuwe naam"
             onKeyDown={(e) => {
               if (e.key === 'Enter') handleSave();
               if (e.key === 'Escape') handleCancel();
             }}
           />
-          <button onClick={handleSave} className="p-1 hover:bg-muted rounded">
+          <button onClick={handleSave} aria-label="Naam opslaan" title="Opslaan" className="p-1 hover:bg-muted rounded">
             <Check className="w-3 h-3 text-primary" />
           </button>
-          <button onClick={handleCancel} className="p-1 hover:bg-muted rounded">
+          <button onClick={handleCancel} aria-label="Hernoemen annuleren" title="Annuleren" className="p-1 hover:bg-muted rounded">
             <X className="w-3 h-3 text-destructive" />
           </button>
         </div>

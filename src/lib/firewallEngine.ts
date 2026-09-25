@@ -84,8 +84,8 @@ export function checkRules({
   const packetSrcName = getNodeName(nodes, srcId, addressLists);
   const packetDstName = getNodeName(nodes, dstId, addressLists);
 
-  // Rules are evaluated top to bottom, first match wins — never mutate the
-  // caller's array in place (F7), work on a sorted copy instead.
+  // Rules are evaluated top to bottom, first match wins. Sort a copy: sorting
+  // the caller's array in place would silently reorder React state.
   const sortedRules = [...rules].sort((a, b) => a.order - b.order);
 
   for (let i = 0; i < sortedRules.length; i++) {

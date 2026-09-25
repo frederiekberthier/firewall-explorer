@@ -39,8 +39,8 @@ describe('checkRules', () => {
   });
 
   it('falls back to the default (block-all) policy for the reply when no established/related rule exists', () => {
-    // This is the acceptance test from the handoff brief (F1): a new-only
-    // rule must not silently let the reply through.
+    // A rule that only allows 'new' must not silently let the reply through:
+    // replies are 'established' and need their own rule.
     const results = checkRules({
       nodes,
       rules: [rule({})],
@@ -86,7 +86,7 @@ describe('checkRules', () => {
     expect(last.action).toBe('allow');
   });
 
-  it('does not let a "new" rule match in reverse, and reports the direction as the reason (F2)', () => {
+  it('does not let a "new" rule match in reverse, and reports the direction as the reason', () => {
     const results = checkRules({
       nodes,
       rules: [rule({ sourceId: vlan2.id, destinationId: vlan1.id })], // VLAN2 -> VLAN1, new, allow

@@ -26,7 +26,7 @@ describe('runIntent', () => {
   it('passes an allow intent only when both request and reply succeed', () => {
     const intent = SCENARIOS[0].intents!.find(i => i.id === 'i1')!; // DATA -> Internet, expect allow
 
-    // Only a 'new' rule, no established/related -> must fail (this is the F1 lesson)
+    // Only a 'new' rule, no established/related -> the reply is dropped, so it must fail
     const onlyNewRule: FirewallRule[] = [rule({ id: 'r1', order: 0 })];
     expect(runIntent(intent, nodes, onlyNewRule, 'block-all').pass).toBe(false);
 

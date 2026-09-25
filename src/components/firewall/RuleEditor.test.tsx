@@ -79,3 +79,32 @@ describe('RuleEditor rule reordering without drag-and-drop', () => {
     expect(screen.getByRole('group', { name: 'Connection state(s)' })).toBeInTheDocument();
   });
 });
+
+describe('RuleEditor rule list help text', () => {
+  const renderWithPolicy = (firewallPolicy: 'block-all' | 'allow-all') => {
+    const noop = () => {};
+    render(
+      <RuleEditor
+        nodes={[]}
+        rules={[]}
+        firewallPolicy={firewallPolicy}
+        addressLists={[]}
+        onPolicyChange={noop}
+        onAddRule={noop}
+        onDeleteRule={noop}
+        onReorderRules={noop}
+        onAddAddressList={noop}
+        onDeleteAddressList={noop}
+      />
+    );
+    return screen.getByText(/Matcht geen enkele regel, dan geldt je default policy/);
+  };
+
+  it('names the chosen default policy instead of always saying "allow"', () => {
+    expect(renderWithPolicy('block-all')).toHaveTextContent('default policy: Block All.');
+  });
+
+  it('follows an Allow All policy too', () => {
+    expect(renderWithPolicy('allow-all')).toHaveTextContent('default policy: Allow All.');
+  });
+});

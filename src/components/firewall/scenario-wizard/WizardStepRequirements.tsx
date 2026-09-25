@@ -39,6 +39,7 @@ export function WizardStepRequirements({ draft, onChange }: WizardStepRequiremen
               R{index + 1}
             </span>
             <Input
+              aria-label={`Vereiste R${index + 1}`}
               placeholder="bv. DATA mag naar internet"
               value={req.text}
               onChange={(e) => updateRequirement(req.key, e.target.value)}
@@ -47,6 +48,7 @@ export function WizardStepRequirements({ draft, onChange }: WizardStepRequiremen
               variant="ghost"
               size="icon"
               onClick={() => removeRequirement(req.key)}
+              aria-label={`Vereiste R${index + 1} verwijderen`}
               className="flex-shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
             >
               <Trash2 className="w-4 h-4" />

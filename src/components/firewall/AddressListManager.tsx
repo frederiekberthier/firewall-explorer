@@ -65,6 +65,8 @@ export function AddressListManager({ nodes, addressLists, onAddAddressList, onDe
                   size="icon"
                   className="ml-auto h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
                   onClick={() => onDeleteAddressList(list.id)}
+                  aria-label={`Adreslijst ${list.name} verwijderen`}
+                  title="Verwijderen"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </Button>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useId } from 'react';
 import { NetworkNode, FirewallRule, SimulationPacket, FirewallPolicy, AddressList } from '@/types/firewall';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -38,6 +38,7 @@ export function SimulationPanel({
   onSimulationChange,
   onActiveRuleChange
 }: SimulationPanelProps) {
+  const fieldId = useId();
   const [sourceId, setSourceId] = useState<string>('');
   const [destinationId, setDestinationId] = useState<string>('');
   const [ruleChecks, setRuleChecks] = useState<RuleCheckResult[]>([]);
@@ -243,9 +244,9 @@ export function SimulationPanel({
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Bron</label>
+              <label htmlFor={`${fieldId}-source`} className="text-sm font-medium">Bron</label>
               <Select value={sourceId} onValueChange={setSourceId} disabled={phase !== 'idle'}>
-                <SelectTrigger>
+                <SelectTrigger id={`${fieldId}-source`}>
                   <SelectValue placeholder="Selecteer..." />
                 </SelectTrigger>
                 <SelectContent className="bg-popover border border-border">
@@ -259,9 +260,9 @@ export function SimulationPanel({
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Doel</label>
+              <label htmlFor={`${fieldId}-destination`} className="text-sm font-medium">Doel</label>
               <Select value={destinationId} onValueChange={setDestinationId} disabled={phase !== 'idle'}>
-                <SelectTrigger>
+                <SelectTrigger id={`${fieldId}-destination`}>
                   <SelectValue placeholder="Selecteer..." />
                 </SelectTrigger>
                 <SelectContent className="bg-popover border border-border">
@@ -289,6 +290,8 @@ export function SimulationPanel({
               variant="outline"
               onClick={resetSimulation}
               disabled={phase === 'idle'}
+              aria-label="Simulatie resetten"
+              title="Simulatie resetten"
             >
               <RotateCcw className="w-4 h-4" />
             </Button>

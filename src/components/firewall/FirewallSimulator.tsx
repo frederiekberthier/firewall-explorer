@@ -75,14 +75,14 @@ export function FirewallSimulator() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b border-border bg-card sticky top-0 z-10">
-        <div className="flex items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between gap-3 px-4 md:px-6 py-3">
+          <div className="flex items-center gap-3 min-w-0">
             <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Logo" className="h-9 w-9" />
             <div>
-              <h1 className="text-xl font-bold text-foreground">
+              <h1 className="text-lg md:text-xl font-bold text-foreground">
                 Firewall Simulator
               </h1>
-              <p className="text-xs text-muted-foreground">
+              <p className="hidden sm:block text-xs text-muted-foreground">
                 Leer hoe stateful firewall regels werken
               </p>
             </div>
@@ -95,9 +95,9 @@ export function FirewallSimulator() {
         </div>
       </header>
 
-      <div className="flex">
-        {/* Sidebar - Phase navigation */}
-        <aside className="w-64 border-r border-border bg-card/50 sticky top-[65px] h-[calc(100vh-65px)] p-6">
+      <div className="flex flex-col md:flex-row">
+        {/* Phase navigation: a horizontal bar on small screens, a sticky sidebar from md up */}
+        <aside className="border-b md:border-b-0 md:border-r border-border bg-card/50 p-3 md:p-6 md:w-64 md:flex-shrink-0 md:sticky md:top-[65px] md:h-[calc(100vh-65px)]">
           <PhaseNavigation
             currentPhase={phase}
             onPhaseChange={setPhase}
@@ -105,7 +105,7 @@ export function FirewallSimulator() {
           />
         </aside>
 
-        <main className="flex-1 container py-6 space-y-6">
+        <main className="flex-1 min-w-0 container px-4 md:px-8 py-6 space-y-6">
           {/* Phase description */}
           <div className="flex items-start gap-3 p-4 bg-card rounded-xl border border-border">
             <HelpCircle className="w-5 h-5 text-primary mt-0.5" />
@@ -246,7 +246,7 @@ export function FirewallSimulator() {
 
       {/* Footer */}
       <footer className="border-t border-border bg-card/80 backdrop-blur-sm">
-        <div className="px-6 py-4">
+        <div className="px-4 md:px-6 py-4">
           <div className="flex flex-col gap-3">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>

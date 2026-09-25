@@ -1,9 +1,10 @@
-import { useRef, useCallback, useState } from 'react';
+import { useRef, useCallback, useState, useEffect } from 'react';
 import { NetworkNode, Connection, SimulationPacket } from '@/types/firewall';
 import { NetworkNodeComponent } from './NetworkNode';
 import { ConnectionLine } from './ConnectionLine';
 import { Button } from '@/components/ui/button';
-import { ZoomIn, ZoomOut, RotateCcw, Move } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Move, Maximize } from 'lucide-react';
+import { fitView, MIN_ZOOM, MAX_ZOOM } from '@/lib/layout';
 
 interface NetworkCanvasProps {
   nodes: NetworkNode[];
@@ -41,14 +42,41 @@ export function NetworkCanvas({
     nodeStartY: number;
   } | null>(null);
 
-  const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.25, 2));
-  const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.25, 0.25));
+  const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.25, MAX_ZOOM));
+  const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.25, MIN_ZOOM));
   const handleZoomReset = () => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
   };
 
-  const handleDragStart = useCallback((nodeId: string, e: React.MouseEvent) => {
+  // Latest nodes for the fit effects below, without re-running them on every
+  // drag step (a node move changes `nodes` but must not re-fit the view).
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+
+  const applyFit = useCallback((onlyIfOverflowing: boolean) => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const fit = fitView(nodesRef.current, el.clientWidth, el.clientHeight);
+    if (onlyIfOverflowing && fit.fitsAtIdentity) return;
+    setZoom(fit.zoom);
+    setPan(fit.pan);
+  }, []);
+
+  // Fit automatically when the network would not fit at 100% — on a narrow
+  // screen, or after loading a scenario with many VLANs — both on first render
+  // and whenever nodes are added or removed.
+  useEffect(() => {
+    applyFit(true);
+  }, [nodes.length, applyFit]);
+
+  useEffect(() => {
+    const onResize = () => applyFit(true);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [applyFit]);
+
+  const handleDragStart = useCallback((nodeId: string, e: React.PointerEvent) => {
     if (!isEditable) return;
     const node = nodes.find(n => n.id === nodeId);
     if (!node || node.type === 'router') return;
@@ -62,7 +90,7 @@ export function NetworkCanvas({
     });
   }, [nodes, isEditable]);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (isPanning) {
       const dx = e.clientX - panStart.x;
       const dy = e.clientY - panStart.y;
@@ -82,12 +110,12 @@ export function NetworkCanvas({
     });
   }, [dragState, onUpdateNode, isPanning, panStart, zoom]);
 
-  const handleMouseUp = useCallback(() => {
+  const handlePointerUp = useCallback(() => {
     setDragState(null);
     setIsPanning(false);
   }, []);
 
-  const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
+  const handleCanvasPointerDown = useCallback((e: React.PointerEvent) => {
     // Start panning when clicking on empty canvas area. The background grid
     // and connection-line <svg> layers have pointer-events:none (so clicks
     // reach nodes drawn on top of them), which means a click on empty space
@@ -108,12 +136,17 @@ export function NetworkCanvas({
     <div
       ref={canvasRef}
       data-pan-surface="true"
-      className={`relative w-full h-[700px] bg-gradient-to-br from-background to-muted/30 rounded-xl border border-border overflow-hidden ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+      // Pointer events (not mouse events) so dragging and panning also work
+      // with touch and pen; touch-none stops the browser from scrolling the
+      // page instead. A touch pointer is implicitly captured by the element it
+      // started on, so its move/up events still bubble up to this handler.
+      className={`relative w-full h-[60vh] min-h-[360px] md:h-[700px] touch-none bg-gradient-to-br from-background to-muted/30 rounded-xl border border-border overflow-hidden ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
       onClick={() => !isPanning && onSelectNode(null)}
-      onMouseDown={handleCanvasMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
+      onPointerDown={handleCanvasPointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onPointerLeave={handlePointerUp}
     >
       {/* Zoom controls */}
       <div className="absolute top-3 right-3 z-20 flex items-center gap-1 bg-card/90 backdrop-blur-sm rounded-lg border border-border p-1 shadow-sm">
@@ -142,6 +175,15 @@ export function NetworkCanvas({
           variant="ghost"
           size="icon"
           className="h-8 w-8"
+          onClick={(e) => { e.stopPropagation(); applyFit(false); }}
+          title="Passend maken"
+        >
+          <Maximize className="w-4 h-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
           onClick={(e) => { e.stopPropagation(); handleZoomReset(); }}
           title="Reset zoom en positie"
         >
@@ -150,7 +192,7 @@ export function NetworkCanvas({
       </div>
 
       {/* Pan hint */}
-      <div className="absolute bottom-3 left-3 z-20 flex items-center gap-1.5 bg-card/80 backdrop-blur-sm rounded-lg border border-border px-2 py-1 shadow-sm">
+      <div className="absolute bottom-3 left-3 z-20 hidden sm:flex items-center gap-1.5 bg-card/80 backdrop-blur-sm rounded-lg border border-border px-2 py-1 shadow-sm">
         <Move className="w-3 h-3 text-muted-foreground" />
         <span className="text-xs text-muted-foreground">Sleep om te pannen</span>
       </div>
@@ -161,8 +203,11 @@ export function NetworkCanvas({
         className="absolute inset-0 origin-center transition-transform duration-100"
         style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
       >
-        {/* Grid pattern */}
-        <svg className="absolute inset-0 w-full h-full pointer-events-none">
+        {/* Grid pattern — oversized so it still fills the view when zoomed out */}
+        <svg
+          className="absolute pointer-events-none"
+          style={{ left: -2000, top: -2000, width: 'calc(100% + 4000px)', height: 'calc(100% + 4000px)' }}
+        >
           <defs>
             <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
               <path
@@ -177,8 +222,9 @@ export function NetworkCanvas({
           <rect width="100%" height="100%" fill="url(#grid)" />
         </svg>
 
-        {/* Connection lines */}
-        <svg className="absolute inset-0 w-full h-full pointer-events-none">
+        {/* Connection lines — overflow-visible so lines to nodes outside the
+            canvas-sized box (visible after zooming out) are not clipped */}
+        <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
           {connections.map(conn => {
             const fromNode = getNodeById(conn.fromId);
             const toNode = getNodeById(conn.toId);

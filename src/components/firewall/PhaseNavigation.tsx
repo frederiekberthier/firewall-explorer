@@ -17,16 +17,17 @@ const phases = [
 
 export function PhaseNavigation({ currentPhase, onPhaseChange, canProceed }: PhaseNavigationProps) {
   return (
-    <div className="flex flex-col gap-4">
-      {/* Phase indicators */}
-      <div className="flex flex-col gap-2">
+    <nav aria-label="Fases" className="flex flex-col gap-3 md:gap-4">
+      {/* Phase indicators: a row on small screens, a column in the sidebar */}
+      <ol className="flex flex-row md:flex-col gap-1 md:gap-2">
         {phases.map((p, idx) => (
-          <div key={p.phase} className="flex flex-col">
+          <li key={p.phase} className="flex flex-row md:flex-col items-center md:items-stretch flex-1 min-w-0">
             <button
               onClick={() => onPhaseChange(p.phase)}
               disabled={p.phase > currentPhase && !canProceed}
+              aria-current={currentPhase === p.phase ? 'step' : undefined}
               className={cn(
-                "flex items-center gap-3 px-4 py-3 rounded-lg transition-all w-full",
+                "flex items-center justify-center md:justify-start gap-2 md:gap-3 px-2 py-2 md:px-4 md:py-3 rounded-lg transition-all w-full min-w-0",
                 currentPhase === p.phase
                   ? "bg-primary text-primary-foreground shadow-lg"
                   : currentPhase > p.phase
@@ -46,22 +47,26 @@ export function PhaseNavigation({ currentPhase, onPhaseChange, canProceed }: Pha
               )}>
                 <p.icon className="w-4 h-4" />
               </div>
-              <span className="font-medium text-left">{p.label}</span>
+              {/* Label is visually hidden on the narrowest screens, but stays the button's accessible name */}
+              <span className="sr-only sm:not-sr-only font-medium text-left text-sm md:text-base truncate">{p.label}</span>
             </button>
             {idx < phases.length - 1 && (
-              <ChevronDown className="w-5 h-5 my-1 mx-auto text-muted-foreground" />
+              <>
+                <ChevronRight className="md:hidden w-4 h-4 mx-0.5 flex-shrink-0 text-muted-foreground" aria-hidden="true" />
+                <ChevronDown className="hidden md:block w-5 h-5 my-1 mx-auto text-muted-foreground" aria-hidden="true" />
+              </>
             )}
-          </div>
+          </li>
         ))}
-      </div>
+      </ol>
 
-      {/* Navigation buttons */}
-      <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-border">
+      {/* Navigation buttons: "Vorige" left / "Volgende" right on small screens */}
+      <div className="flex flex-row-reverse md:flex-col gap-2 md:mt-4 md:pt-4 md:border-t border-border">
         {currentPhase < 3 && (
           <Button
             onClick={() => onPhaseChange((currentPhase + 1) as Phase)}
             disabled={!canProceed}
-            className="w-full"
+            className="flex-1 md:flex-none md:w-full"
           >
             Volgende fase
             <ChevronRight className="w-4 h-4 ml-2" />
@@ -71,13 +76,13 @@ export function PhaseNavigation({ currentPhase, onPhaseChange, canProceed }: Pha
           <Button
             variant="outline"
             onClick={() => onPhaseChange((currentPhase - 1) as Phase)}
-            className="w-full"
+            className="flex-1 md:flex-none md:w-full"
           >
             <ChevronLeft className="w-4 h-4 mr-2" />
             Vorige fase
           </Button>
         )}
       </div>
-    </div>
+    </nav>
   );
 }

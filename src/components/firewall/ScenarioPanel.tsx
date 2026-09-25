@@ -142,9 +142,9 @@ export function ScenarioPanel({ activeScenario, onLoadScenario, onClearScenario 
   if (!activeScenario) {
     return (
       <Card>
-        <CardContent className="pt-6 flex items-center justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <BookOpen className="w-5 h-5 text-muted-foreground mt-0.5" />
+        <CardContent className="pt-6 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <BookOpen className="w-5 h-5 flex-shrink-0 text-muted-foreground mt-0.5" />
             <div>
               <p className="text-sm font-medium">Geen scenario actief</p>
               <p className="text-xs text-muted-foreground">
@@ -161,19 +161,19 @@ export function ScenarioPanel({ activeScenario, onLoadScenario, onClearScenario 
   return (
     <Card className="border-2 border-primary/20 bg-primary/5">
       <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <div>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
             <CardTitle className="text-lg flex items-center gap-2">
-              <BookOpen className="w-5 h-5" />
+              <BookOpen className="w-5 h-5 flex-shrink-0" />
               {activeScenario.meta.title}
             </CardTitle>
             {activeScenario.meta.difficulty && (
               <Badge variant="outline" className="mt-1 text-[10px]">{activeScenario.meta.difficulty}</Badge>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="ml-auto flex flex-shrink-0 items-center gap-2">
             <ScenarioPicker onLoadScenario={onLoadScenario} />
-            <Button variant="ghost" size="icon" onClick={onClearScenario} title="Scenario sluiten">
+            <Button variant="ghost" size="icon" onClick={onClearScenario} title="Scenario sluiten" aria-label="Scenario sluiten">
               <X className="w-4 h-4" />
             </Button>
           </div>

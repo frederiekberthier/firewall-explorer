@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Trash2, GripVertical, Plus, ShieldCheck, ShieldX, ShieldAlert, ArrowRight, Download, Shield, ChevronUp, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getNodeName as getNodeNameForNodes } from '@/lib/nodeNames';
+import { buildMikrotikConfig } from '@/lib/mikrotikExport';
 import { ScenarioSelfTest } from './ScenarioSelfTest';
 import { AddressListManager } from './AddressListManager';
 
@@ -129,142 +130,8 @@ export function RuleEditor({
     setPendingFocus(null);
   }, [rules, pendingFocus, fieldId]);
 
-  const getMikrotikAddressParam = (nodeId: string, paramType: 'src' | 'dst') => {
-    const prefix = paramType === 'src' ? 'src-address-list' : 'dst-address-list';
-
-    // Handle wildcards - return empty string for wildcards (no restriction)
-    if (isWildcardId(nodeId)) return '';
-
-    const list = addressLists.find(l => l.id === nodeId);
-    if (list) {
-      const listName = list.name.toLowerCase().replace(/\s+/g, '_');
-      return `${prefix}=${listName}`;
-    }
-
-    const node = nodes.find(n => n.id === nodeId);
-    if (!node) return '';
-
-    // Only use address-list for specific nodes
-    const listName = node.name.toLowerCase().replace(/\s+/g, '_');
-    return `${prefix}=${listName}`;
-  };
-
   const handleExportRules = () => {
-    // Collect distinct address-list definitions needed: either a manually
-    // created list (one line per member, sharing that list's name), or a
-    // single node referenced directly by a rule (one line, list name
-    // derived from the node's own name, as before address lists existed).
-    const referencedListIds = new Set<string>();
-    const referencedNodeIds = new Set<string>();
-    rules.forEach(rule => {
-      [rule.sourceId, rule.destinationId].forEach(id => {
-        if (isWildcardId(id)) return;
-        if (addressLists.some(l => l.id === id)) {
-          referencedListIds.add(id);
-          return;
-        }
-        // The router itself needs no address-list entry: a rule aimed at it
-        // exports as chain=input, which already means "traffic to the
-        // router" without a dst-address-list (see dstParam below).
-        const node = nodes.find(n => n.id === id);
-        if (node?.type === 'router') return;
-        referencedNodeIds.add(id);
-      });
-    });
-
-    const nodeAddressLine = (node: NetworkNode, listName: string) => {
-      if (node.type === 'internet') {
-        return `/ip firewall address-list add list=${listName} address=0.0.0.0/0 comment="${node.name} - adjust to actual external networks"`;
-      } else if (node.type === 'vlan') {
-        const address = node.subnet || '192.168.x.0/24';
-        return `/ip firewall address-list add list=${listName} address=${address} comment="${node.name} (VLAN ${node.vlanId ?? '?'})"`;
-      } else if (node.type === 'host') {
-        const address = node.ip || '192.168.x.x';
-        return `/ip firewall address-list add list=${listName} address=${address} comment="${node.name}"`;
-      }
-      return '';
-    };
-
-    const addressListConfig = [
-      ...Array.from(referencedNodeIds).map(nodeId => {
-        const node = nodes.find(n => n.id === nodeId);
-        if (!node) return '';
-        const listName = node.name.toLowerCase().replace(/\s+/g, '_');
-        return `# Address list for ${node.name}\n${nodeAddressLine(node, listName)}`;
-      }),
-      ...Array.from(referencedListIds).map(listId => {
-        const list = addressLists.find(l => l.id === listId);
-        if (!list) return '';
-        const listName = list.name.toLowerCase().replace(/\s+/g, '_');
-        const memberLines = list.memberIds
-          .map(memberId => nodes.find(n => n.id === memberId))
-          .filter((n): n is NetworkNode => !!n)
-          .map(member => nodeAddressLine(member, listName))
-          .join('\n');
-        return `# Address list "${list.name}" (${list.memberIds.length} leden)\n${memberLines}`;
-      })
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-
-    const mikrotikConfig = [...rules]
-      .sort((a, b) => a.order - b.order)
-      .map((rule, index) => {
-        const source = getNodeName(rule.sourceId);
-        const destination = getNodeName(rule.destinationId);
-        const destNode = nodes.find(n => n.id === rule.destinationId);
-        // A rule aimed at the router itself is management traffic (chain
-        // input), everything else is regular inter-VLAN/host traffic
-        // (chain forward) — this is the vast majority of rules, and the
-        // only chain anyone needs to think about unless they deliberately
-        // pick the router as a destination.
-        const chain = destNode?.type === 'router' ? 'input' : 'forward';
-        const srcParam = getMikrotikAddressParam(rule.sourceId, 'src');
-        // chain=input already means "traffic to the router" — no separate
-        // dst-address-list is needed (or meaningful) there.
-        const dstParam = chain === 'input' ? '' : getMikrotikAddressParam(rule.destinationId, 'dst');
-        const connectionState = rule.connectionStates.join(',');
-        const action = rule.action === 'allow' ? 'accept' : rule.action === 'reject' ? 'reject' : 'drop';
-
-        // Generate comment for readability
-        const comment = `Rule ${index + 1}: ${source} -> ${destination} (${rule.connectionStates.join(',')})`;
-
-        // Build the rule with only non-empty parameters
-        const params = [
-          `chain=${chain}`,
-          srcParam,
-          dstParam,
-          `connection-state=${connectionState}`,
-          `action=${action}`,
-          `comment="${comment}"`
-        ].filter(Boolean).join(' ');
-
-        return `/ip firewall filter add ${params}`;
-      })
-      .join('\n');
-
-    // Create full configuration file with header
-    const fullConfig = `# MikroTik RouterOS Firewall Configuration
-# Generated on ${new Date().toLocaleString('nl-NL')}
-# Total rules: ${rules.length}
-#
-# INSTRUCTIONS:
-# 1. First, apply the address lists below (auto-generated from this network's
-#    VLAN subnets / host IPs — check they match your actual lab addressing)
-# 2. Then apply the firewall filter rules
-#
-# Step 1: Define Address Lists
-# =============================
-
-${addressListConfig}
-
-# Step 2: Apply Firewall Filter Rules
-# ====================================
-
-${mikrotikConfig}
-
-# End of configuration
-`;
+    const fullConfig = buildMikrotikConfig({ nodes, rules, addressLists, firewallPolicy });
 
     // Create and download file
     const blob = new Blob([fullConfig], { type: 'text/plain' });

@@ -23,18 +23,37 @@ function rule(overrides: Partial<FirewallRule>): FirewallRule {
 }
 
 describe('runIntent', () => {
-  it('passes an allow intent only when both request and reply succeed', () => {
+  it('passes an allow intent only when request, reply and follow-up packets all succeed', () => {
     const intent = SCENARIOS[0].intents!.find(i => i.id === 'i1')!; // DATA -> Internet, expect allow
+    const newRule = rule({ id: 'r1', order: 0 }); // DATA -> Internet (new)
 
     // Only a 'new' rule, no established/related -> the reply is dropped, so it must fail
-    const onlyNewRule: FirewallRule[] = [rule({ id: 'r1', order: 0 })];
-    expect(runIntent(intent, nodes, onlyNewRule, 'block-all').pass).toBe(false);
+    expect(runIntent(intent, nodes, [newRule], 'block-all').pass).toBe(false);
 
-    const withReplyRule: FirewallRule[] = [
-      ...onlyNewRule,
-      rule({ id: 'r2', connectionStates: ['established', 'related'], order: 1 })
+    // An established rule in the *request* direction does not cover the reply
+    // (Internet -> DATA) — rules match literally, as on RouterOS.
+    const sameDirection = [newRule, rule({ id: 'r2', connectionStates: ['established', 'related'], order: 1 })];
+    const replyBlocked = runIntent(intent, nodes, sameDirection, 'block-all');
+    expect(replyBlocked.pass).toBe(false);
+    expect(replyBlocked.reason).toContain('antwoord (Internet → DATA)');
+
+    // Reply rule only: the client's follow-up packets (DATA -> Internet, established) are dropped.
+    const replyOnly = [newRule, rule({ id: 'r2', sourceId: internet.id, destinationId: data.id, connectionStates: ['established', 'related'], order: 1 })];
+    const followUpBlocked = runIntent(intent, nodes, replyOnly, 'block-all');
+    expect(followUpBlocked.pass).toBe(false);
+    expect(followUpBlocked.reason).toContain('vervolgpakketten (DATA → Internet, established)');
+
+    // Both directions covered -> the connection works.
+    expect(runIntent(intent, nodes, [...sameDirection, { ...replyOnly[1], id: 'r3', order: 2 }], 'block-all').pass).toBe(true);
+  });
+
+  it('passes an allow intent with one global established,related rule (ANY -> ANY)', () => {
+    const intent = SCENARIOS[0].intents!.find(i => i.id === 'i1')!; // DATA -> Internet, expect allow
+    const rules: FirewallRule[] = [
+      rule({ id: 'r0', sourceId: 'ANY', destinationId: 'ANY', connectionStates: ['established', 'related'], order: 0 }),
+      rule({ id: 'r1', order: 1 })
     ];
-    expect(runIntent(intent, nodes, withReplyRule, 'block-all').pass).toBe(true);
+    expect(runIntent(intent, nodes, rules, 'block-all').pass).toBe(true);
   });
 
   it('passes a drop intent when the default policy already blocks it', () => {
@@ -86,10 +105,10 @@ describe('runIntent wildcards', () => {
   it('passes an ANY_VLAN intent only when every VLAN individually satisfies it', () => {
     const intent = { id: 'w1', requirementId: 'R1', description: '', from: 'ANY_VLAN', to: 'Internet', expect: 'allow' as const };
 
-    // Only DATA has a working rule (with reply) — SEC has none.
+    // Only DATA has working rules (request, follow-up and reply) — SEC has none.
     const rules: FirewallRule[] = [
-      rule({ id: 'r1', sourceId: data.id, destinationId: internet.id, connectionStates: ['new'], order: 0 }),
-      rule({ id: 'r2', sourceId: data.id, destinationId: internet.id, connectionStates: ['established', 'related'], order: 1 })
+      rule({ id: 'r1', sourceId: data.id, destinationId: internet.id, connectionStates: ['new', 'established', 'related'], order: 0 }),
+      rule({ id: 'r2', sourceId: internet.id, destinationId: data.id, connectionStates: ['established', 'related'], order: 1 })
     ];
 
     const failing = runIntent(intent, nodes, rules, 'block-all');
@@ -98,8 +117,8 @@ describe('runIntent wildcards', () => {
 
     const rulesForBoth: FirewallRule[] = [
       ...rules,
-      rule({ id: 'r3', sourceId: sec.id, destinationId: internet.id, connectionStates: ['new'], order: 2 }),
-      rule({ id: 'r4', sourceId: sec.id, destinationId: internet.id, connectionStates: ['established', 'related'], order: 3 })
+      rule({ id: 'r3', sourceId: sec.id, destinationId: internet.id, connectionStates: ['new', 'established', 'related'], order: 2 }),
+      rule({ id: 'r4', sourceId: internet.id, destinationId: sec.id, connectionStates: ['established', 'related'], order: 3 })
     ];
     const passing = runIntent(intent, nodes, rulesForBoth, 'block-all');
     expect(passing.pass).toBe(true);

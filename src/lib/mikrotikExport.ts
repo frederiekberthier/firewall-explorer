@@ -10,15 +10,44 @@ export interface MikrotikExportInput {
   generatedAt?: Date;
 }
 
-const isWildcardId = (id: string) => id.startsWith('ANY');
+/**
+ * Name for a RouterOS address-list: only [a-z0-9_-], so names with quotes,
+ * slashes, `$` etc. can never break the generated command.
+ */
+export const sanitizeListName = (name: string) =>
+  name
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_-]/g, '')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '') || 'lijst';
 
-const listNameFor = (name: string) => name.toLowerCase().replace(/\s+/g, '_');
+/**
+ * Escape text for use inside a RouterOS double-quoted string (comment="…"):
+ * backslash, double quote and `$` (which RouterOS reads as a variable).
+ */
+export const escapeRouterOsString = (text: string) => text.replace(/[\\"$]/g, ch => `\\${ch}`);
+
+/** RouterOS interface list for the Internet side (MikroTik default config). */
+const WAN_LIST = 'WAN';
 
 /**
  * Builds a RouterOS configuration that behaves like the simulator: the
  * explicit rules in order, followed by the two safety nets the simulator
  * applies when no rule matches (RouterOS itself accepts whatever falls off
  * the end of a chain, so without them the export would act as allow-all).
+ *
+ * How rule endpoints are exported, mirroring matchesWildcard() in
+ * firewallEngine.ts:
+ * - ANY          -> no restriction (e.g. the classic global
+ *                   "accept established,related" rule)
+ * - ANY_VLAN     -> address-list with every VLAN subnet
+ * - ANY_HOST     -> address-list with every host IP
+ * - Internet / ANY_INTERNET -> the WAN interface list (in-/out-interface-list),
+ *                   not 0.0.0.0/0: that range also contains every internal
+ *                   subnet, so "DATA -> Internet" would allow DATA -> SEC too
+ * - VLAN, host, address list -> an address-list of its own
  */
 export function buildMikrotikConfig({
   nodes,
@@ -28,78 +57,84 @@ export function buildMikrotikConfig({
   generatedAt = new Date()
 }: MikrotikExportInput): string {
   const nameOf = (id: string) => getNodeName(nodes, id, addressLists);
+  const isInternet = (id: string) => id === 'ANY_INTERNET' || nodes.find(n => n.id === id)?.type === 'internet';
 
-  const addressParam = (nodeId: string, paramType: 'src' | 'dst') => {
-    const prefix = paramType === 'src' ? 'src-address-list' : 'dst-address-list';
+  const sortedRules = [...rules].sort((a, b) => a.order - b.order);
 
-    // Wildcards carry no address restriction
-    if (isWildcardId(nodeId)) return '';
-
-    const list = addressLists.find(l => l.id === nodeId);
-    if (list) return `${prefix}=${listNameFor(list.name)}`;
-
-    const node = nodes.find(n => n.id === nodeId);
-    if (!node) return '';
-    return `${prefix}=${listNameFor(node.name)}`;
+  // Distinct RouterOS list names, handed out in order of first use; a clash
+  // (two nodes named alike, a node and a list both called "data", …) gets a
+  // numeric suffix instead of silently merging into one RouterOS list.
+  const usedListNames = new Set<string>();
+  const listNameById = new Map<string, string>();
+  const listNameFor = (id: string, displayName: string) => {
+    const existing = listNameById.get(id);
+    if (existing) return existing;
+    const base = sanitizeListName(displayName);
+    let name = base;
+    for (let i = 2; usedListNames.has(name); i++) name = `${base}_${i}`;
+    usedListNames.add(name);
+    listNameById.set(id, name);
+    return name;
   };
 
-  // Collect distinct address-list definitions needed: either a manually
-  // created list (one line per member, sharing that list's name), or a
-  // single node referenced directly by a rule (one line, list name
-  // derived from the node's own name, as before address lists existed).
-  const referencedListIds = new Set<string>();
-  const referencedNodeIds = new Set<string>();
-  rules.forEach(rule => {
-    [rule.sourceId, rule.destinationId].forEach(id => {
-      if (isWildcardId(id)) return;
-      if (addressLists.some(l => l.id === id)) {
-        referencedListIds.add(id);
-        return;
-      }
-      // The router itself needs no address-list entry: a rule aimed at it
-      // exports as chain=input, which already means "traffic to the
-      // router" without a dst-address-list (see dstParam below).
-      const node = nodes.find(n => n.id === id);
-      if (node?.type === 'router') return;
-      referencedNodeIds.add(id);
-    });
-  });
+  const vlans = nodes.filter(n => n.type === 'vlan');
+  const hosts = nodes.filter(n => n.type === 'host');
+  const vlanLine = (node: NetworkNode, listName: string, label = node.name) =>
+    `/ip firewall address-list add list=${listName} address=${node.subnet || '192.168.x.0/24'} comment="${escapeRouterOsString(`${label} (VLAN ${node.vlanId ?? '?'})`)}"`;
+  const hostLine = (node: NetworkNode, listName: string, label = node.name) =>
+    `/ip firewall address-list add list=${listName} address=${node.ip || '192.168.x.x'} comment="${escapeRouterOsString(label)}"`;
+  const memberLine = (node: NetworkNode, listName: string) =>
+    node.type === 'vlan' ? vlanLine(node, listName) : node.type === 'host' ? hostLine(node, listName) : '';
 
-  const nodeAddressLine = (node: NetworkNode, listName: string) => {
-    if (node.type === 'internet') {
-      return `/ip firewall address-list add list=${listName} address=0.0.0.0/0 comment="${node.name} - adjust to actual external networks"`;
-    } else if (node.type === 'vlan') {
-      const address = node.subnet || '192.168.x.0/24';
-      return `/ip firewall address-list add list=${listName} address=${address} comment="${node.name} (VLAN ${node.vlanId ?? '?'})"`;
-    } else if (node.type === 'host') {
-      const address = node.ip || '192.168.x.x';
-      return `/ip firewall address-list add list=${listName} address=${address} comment="${node.name}"`;
+  // Address-list definitions for Step 1, keyed by list name, in first-use order.
+  const addressListBlocks: string[] = [];
+  const defineList = (id: string): string | null => {
+    if (listNameById.has(id)) return listNameById.get(id)!;
+
+    if (id === 'ANY_VLAN') {
+      const name = listNameFor(id, 'any_vlan');
+      addressListBlocks.push(
+        vlans.length > 0
+          ? `# Address list for ANY VLAN (alle VLAN-subnetten)\n${vlans.map(v => vlanLine(v, name, `ANY VLAN: ${v.name}`)).join('\n')}`
+          : `# Address list for ANY VLAN: dit netwerk heeft geen VLAN's, de lijst blijft leeg`
+      );
+      return name;
     }
-    return '';
-  };
+    if (id === 'ANY_HOST') {
+      const name = listNameFor(id, 'any_host');
+      addressListBlocks.push(
+        hosts.length > 0
+          ? `# Address list for ANY HOST (alle hosts)\n${hosts.map(h => hostLine(h, name, `ANY HOST: ${h.name}`)).join('\n')}`
+          : `# Address list for ANY HOST: dit netwerk heeft geen hosts, de lijst blijft leeg`
+      );
+      return name;
+    }
 
-  const addressListConfig = [
-    ...Array.from(referencedNodeIds).map(nodeId => {
-      const node = nodes.find(n => n.id === nodeId);
-      if (!node) return '';
-      return `# Address list for ${node.name}\n${nodeAddressLine(node, listNameFor(node.name))}`;
-    }),
-    ...Array.from(referencedListIds).map(listId => {
-      const list = addressLists.find(l => l.id === listId);
-      if (!list) return '';
-      const listName = listNameFor(list.name);
+    const list = addressLists.find(l => l.id === id);
+    if (list) {
+      const name = listNameFor(id, list.name);
       const memberLines = list.memberIds
         .map(memberId => nodes.find(n => n.id === memberId))
         .filter((n): n is NetworkNode => !!n)
-        .map(member => nodeAddressLine(member, listName))
+        .map(member => memberLine(member, name))
         .join('\n');
-      return `# Address list "${list.name}" (${list.memberIds.length} leden)\n${memberLines}`;
-    })
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+      addressListBlocks.push(`# Address list "${list.name}" (${list.memberIds.length} leden)\n${memberLines}`);
+      return name;
+    }
 
-  const sortedRules = [...rules].sort((a, b) => a.order - b.order);
+    const node = nodes.find(n => n.id === id);
+    if (!node || (node.type !== 'vlan' && node.type !== 'host')) return null;
+    const name = listNameFor(id, node.name);
+    addressListBlocks.push(`# Address list for ${node.name}\n${memberLine(node, name)}`);
+    return name;
+  };
+
+  const endpointParam = (id: string, side: 'src' | 'dst') => {
+    if (id === 'ANY') return '';
+    if (isInternet(id)) return `${side === 'src' ? 'in' : 'out'}-interface-list=${WAN_LIST}`;
+    const listName = defineList(id);
+    return listName ? `${side}-address-list=${listName}` : '';
+  };
 
   const filterConfig = sortedRules
     .map((rule, index) => {
@@ -112,10 +147,10 @@ export function buildMikrotikConfig({
       // only chain anyone needs to think about unless they deliberately
       // pick the router as a destination.
       const chain = destNode?.type === 'router' ? 'input' : 'forward';
-      const srcParam = addressParam(rule.sourceId, 'src');
-      // chain=input already means "traffic to the router" — no separate
-      // dst-address-list is needed (or meaningful) there.
-      const dstParam = chain === 'input' ? '' : addressParam(rule.destinationId, 'dst');
+      const srcParam = endpointParam(rule.sourceId, 'src');
+      // chain=input already means "traffic to the router" — no destination
+      // restriction is needed (or meaningful) there.
+      const dstParam = chain === 'input' ? '' : endpointParam(rule.destinationId, 'dst');
       const connectionState = rule.connectionStates.join(',');
       const action = rule.action === 'allow' ? 'accept' : rule.action === 'reject' ? 'reject' : 'drop';
 
@@ -127,12 +162,16 @@ export function buildMikrotikConfig({
         dstParam,
         `connection-state=${connectionState}`,
         `action=${action}`,
-        `comment="${comment}"`
+        `comment="${escapeRouterOsString(comment)}"`
       ].filter(Boolean).join(' ');
 
       return `/ip firewall filter add ${params}`;
     })
     .join('\n');
+
+  const addressListConfig = addressListBlocks.length > 0
+    ? addressListBlocks.join('\n\n')
+    : '# Geen address-lists nodig voor deze regels';
 
   // What the simulator does when no rule matches (see checkRules in
   // firewallEngine.ts). These must come after the explicit rules, so an
@@ -173,6 +212,10 @@ export function buildMikrotikConfig({
 # 1. First, apply the address lists below (auto-generated from this network's
 #    VLAN subnets / host IPs — check they match your actual lab addressing)
 # 2. Then apply the firewall filter rules, followed by the safety nets
+#
+# Internet wordt niet als adresbereik geexporteerd maar als de interface-lijst
+# "${WAN_LIST}" (in-interface-list / out-interface-list), zoals in de MikroTik-
+# standaardconfiguratie. Controleer dat je WAN-poort in die lijst zit.
 #
 # Let op: "add" voegt regels achteraan toe. Staan er al filterregels op de
 # router (bv. uit de standaardconfiguratie), dan worden die eerst geëvalueerd.

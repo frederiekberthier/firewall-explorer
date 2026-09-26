@@ -46,8 +46,11 @@ regels met een bron, een bestemming, een soort verkeer en een actie. De volgorde
 bepaalt alles, dus je kan regels verslepen of met de pijltjes verschuiven.
 
 **3. Simuleren.** Je kiest een afzender en een bestemming en stuurt een pakket.
-De tool toont de volledige evaluatie, ook van het antwoordpakket op de terugweg,
-en het eindoordeel: toegestaan of geblokkeerd.
+De tool volgt de hele verbinding, net als een echte stateful firewall: het eerste
+pakket (new), het antwoord op de terugweg en de vervolgpakketten van de afzender
+(allebei established). Regels matchen letterlijk in de richting van het pakket,
+zoals op RouterOS. Je ziet per pakket welke regel beslist, en het eindoordeel:
+toegestaan of geblokkeerd.
 
 Je regels kan je exporteren naar RouterOS-configuratie, zodat je ze in het labo
 kan vergelijken met wat je op de MikroTik intikt.
@@ -62,8 +65,9 @@ matchen. Docenten kunnen met de wizard zelf scenario's opbouwen.
 Dit is lesmateriaal in ontwikkeling, geen afgewerkt product. Wat er intussen
 in zit:
 
-- stateful evaluatie: het antwoordpakket wordt apart geëvalueerd, met een
-  zichtbare connectietabel, zodat established en related verkeer kloppen
+- stateful evaluatie: verzoek, antwoord en vervolgpakketten worden elk apart
+  geëvalueerd, met een zichtbare connectietabel, zodat established en related
+  verkeer kloppen
 - IP-adressen en subnetten op VLAN's en hosts, ook in de RouterOS-export
 - de chains `forward` en `input`: kies de router als bestemming om te oefenen
   op wie de router zelf mag beheren

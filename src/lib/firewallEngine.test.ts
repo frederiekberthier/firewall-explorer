@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { checkRules } from './firewallEngine';
+import { checkRules, evaluateConnection } from './firewallEngine';
 import { NetworkNode, FirewallRule, AddressList } from '@/types/firewall';
 
 const router: NetworkNode = { id: 'router', type: 'router', name: 'Router', x: 0, y: 0, parentId: null };
@@ -185,5 +185,70 @@ describe('checkRules', () => {
     const last = results[results.length - 1];
     expect(last.matched).toBe(true);
     expect(last.action).toBe('reject');
+  });
+
+  it('does not let an established rule match a reply in the reverse direction', () => {
+    // Rule DATA -> IOT (established); the reply of a DATA -> IOT connection travels IOT -> DATA.
+    const results = checkRules({
+      nodes,
+      rules: [rule({ connectionStates: ['established', 'related'] })],
+      firewallPolicy: 'block-all',
+      sourceId: vlan2.id,
+      destinationId: vlan1.id,
+      isReply: true
+    });
+
+    expect(results[results.length - 1].ruleId).toBe('default');
+    // The trace names the reply packet's real direction and says what is needed.
+    expect(results[0].reason).toContain('dit pakket gaat IOT → DATA');
+    expect(results[0].reason).toContain('regel IOT → DATA (established) nodig');
+  });
+
+  it('lets a rule with ANY match replies in both directions', () => {
+    const anyRule = rule({ sourceId: 'ANY', destinationId: 'ANY', connectionStates: ['established', 'related'] });
+    for (const [src, dst] of [[vlan1.id, vlan2.id], [vlan2.id, vlan1.id]]) {
+      const results = checkRules({ nodes, rules: [anyRule], firewallPolicy: 'block-all', sourceId: src, destinationId: dst, isReply: true });
+      expect(results[results.length - 1].action).toBe('allow');
+    }
+  });
+
+  it('lets packets sent by the router itself through (chain output is not filtered)', () => {
+    const results = checkRules({ nodes, rules: [], firewallPolicy: 'block-all', sourceId: router.id, destinationId: vlan1.id, isReply: true });
+    expect(results).toHaveLength(1);
+    expect(results[0].ruleId).toBe('output-chain');
+    expect(results[0].action).toBe('allow');
+  });
+});
+
+describe('evaluateConnection', () => {
+  const base = { nodes, firewallPolicy: 'block-all' as const, sourceId: vlan1.id, destinationId: vlan2.id };
+
+  it('stops at the request when the new packet is blocked', () => {
+    const result = evaluateConnection({ ...base, rules: [] });
+    expect(result).toMatchObject({ allowed: false, blockedAt: 'request' });
+    expect(result.reply).toBeUndefined();
+  });
+
+  it('evaluates the reply in the reverse direction', () => {
+    const result = evaluateConnection({ ...base, rules: [rule({})] });
+    expect(result.blockedAt).toBe('reply');
+    expect(result.reply![0].reason).toContain('IOT → DATA');
+  });
+
+  it('requires the follow-up packets (established, request direction) as well', () => {
+    const replyRule = rule({ id: 'r2', sourceId: vlan2.id, destinationId: vlan1.id, connectionStates: ['established'], order: 1 });
+    expect(evaluateConnection({ ...base, rules: [rule({}), replyRule] }).blockedAt).toBe('followUp');
+
+    const bothWays = [rule({ connectionStates: ['new', 'established'] }), replyRule];
+    const ok = evaluateConnection({ ...base, rules: bothWays });
+    expect(ok.allowed).toBe(true);
+    expect(ok.blockedAt).toBeUndefined();
+  });
+
+  it('works for management traffic to the router: the reply leaves through chain output', () => {
+    const toRouter = rule({ destinationId: router.id, connectionStates: ['new', 'established'] });
+    const result = evaluateConnection({ ...base, destinationId: router.id, rules: [toRouter] });
+    expect(result.allowed).toBe(true);
+    expect(result.reply![0].ruleId).toBe('output-chain');
   });
 });

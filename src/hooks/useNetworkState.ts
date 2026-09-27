@@ -53,7 +53,8 @@ export function useNetworkState() {
         resolvedParentId = ROUTER_ID;
 
         vlanId = nextVlanId(prev);
-        ({ subnet, gateway } = vlanAddressing(vlanId));
+        // No free VLAN id left (253 in use): the VLAN is still added, without addressing.
+        if (vlanId !== undefined) ({ subnet, gateway } = vlanAddressing(vlanId));
       } else if (type === 'host') {
         // Host must be attached to a router or VLAN
         const parentNode = selectedNodeId ? prev.find(n => n.id === selectedNodeId) : null;
@@ -221,7 +222,7 @@ export function useNetworkState() {
     scenario.topology.vlans.forEach((vlanDef, vlanIndex) => {
       const vlanNodeId = generateId();
       const vId = nextVlanId(newNodes);
-      const { subnet, gateway } = vlanAddressing(vId);
+      const { subnet, gateway } = vId !== undefined ? vlanAddressing(vId) : { subnet: undefined, gateway: undefined };
       const vlanNode: NetworkNode = {
         id: vlanNodeId,
         type: 'vlan',

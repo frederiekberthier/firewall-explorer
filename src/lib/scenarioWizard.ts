@@ -1,5 +1,6 @@
 import { Scenario, ScenarioRequirement, ScenarioIntent } from '@/types/scenario';
 import { SCENARIOS } from '@/data/scenarios';
+import { RESERVED_NODE_NAMES } from './nodeNames';
 
 export interface WizardRequirement {
   /** Stable id for React keys / intentChoices lookup — NOT the final "R#". */
@@ -31,7 +32,8 @@ export interface WizardDraft {
   intentChoices: Record<string, WizardIntentChoice>;
 }
 
-export const RESERVED_NODE_NAMES = ['internet', 'router'];
+// Shared with the rest of the app, so the wizard and renaming on the canvas apply the same rules.
+export { RESERVED_NODE_NAMES };
 
 export function createEmptyDraft(): WizardDraft {
   return {
@@ -104,7 +106,7 @@ export function findTopologyNameIssues(vlans: WizardVlan[]): string[] {
     if (!name) return;
     const lower = name.toLowerCase();
     if (RESERVED_NODE_NAMES.includes(lower)) {
-      issues.push(`"${name}" is een gereserveerde naam (wordt al door de router/internet gebruikt)`);
+      issues.push(`"${name}" is een gereserveerde naam (router, internet of een wildcard zoals ANY)`);
     }
     seen.set(lower, (seen.get(lower) ?? 0) + 1);
   });

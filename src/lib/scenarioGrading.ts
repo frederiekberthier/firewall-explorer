@@ -40,7 +40,9 @@ export function isIntentWildcardToken(value: string): value is IntentWildcardTok
 /** Resolves an intent's `from`/`to` to the concrete node(s) it refers to. */
 function resolveIntentRef(ref: string, nodes: NetworkNode[]): NetworkNode[] {
   if (!isIntentWildcardToken(ref)) {
-    const node = nodes.find(n => n.name === ref);
+    // Prefer the stable reference set when the scenario was loaded, so a
+    // renamed node is still found; fall back to the name for nodes added by hand.
+    const node = nodes.find(n => n.scenarioRef === ref) ?? nodes.find(n => n.name === ref);
     return node ? [node] : [];
   }
   switch (ref) {
@@ -164,7 +166,7 @@ export function runIntent(
     return {
       intent,
       pass: false,
-      reason: `Kan "${intent.from}" en/of "${intent.to}" niet terugvinden in het huidige netwerk.`
+      reason: `Kan "${intent.from}" en/of "${intent.to}" niet terugvinden in het huidige netwerk — werd dat element verwijderd? Laad het scenario opnieuw om het netwerk te herstellen.`
     };
   }
 

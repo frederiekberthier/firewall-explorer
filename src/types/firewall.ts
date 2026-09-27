@@ -21,6 +21,12 @@ export interface NetworkNode {
   gateway?: string;
   /** Host only: the host's IP address within its parent VLAN's subnet. */
   ip?: string;
+  /**
+   * Set when the node was created by loading a scenario: its name in that
+   * scenario. The self-test resolves intents by this stable reference, so
+   * renaming the node on the canvas does not break the requirements.
+   */
+  scenarioRef?: string;
 }
 
 export interface Connection {

@@ -4,6 +4,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useNetworkState } from './useNetworkState';
 import { SCENARIOS } from '@/data/scenarios';
 import { HOST_SPACING } from '@/lib/layout';
+import { gradeScenario } from '@/lib/scenarioGrading';
 
 describe('useNetworkState.loadScenario', () => {
   it('builds a topology with real addressing from a scenario', () => {
@@ -125,5 +126,33 @@ describe('useNetworkState.addressLists', () => {
     act(() => { result.current.resetNetwork(); });
 
     expect(result.current.addressLists).toHaveLength(0);
+  });
+});
+
+describe('useNetworkState node names', () => {
+  it('does not hand out a duplicate name after a node was deleted', () => {
+    const { result } = renderHook(() => useNetworkState());
+    act(() => { result.current.setSelectedNodeId(result.current.ROUTER_ID); });
+    act(() => { result.current.addNode('host'); });
+    act(() => { result.current.addNode('host'); });
+    const host1 = result.current.nodes.find(n => n.name === 'Host 1')!;
+
+    act(() => { result.current.deleteNode(host1.id); });
+    act(() => { result.current.addNode('host'); });
+
+    const hostNames = result.current.nodes.filter(n => n.type === 'host').map(n => n.name).sort();
+    expect(hostNames).toEqual(['Host 1', 'Host 2']);
+  });
+
+  it('keeps scenario requirements resolvable after renaming a scenario node', () => {
+    const { result } = renderHook(() => useNetworkState());
+    act(() => { result.current.loadScenario(SCENARIOS[0]); });
+    const data = result.current.nodes.find(n => n.name === 'DATA')!;
+    expect(data.scenarioRef).toBe('DATA');
+
+    act(() => { result.current.updateNode(data.id, { name: 'Kantoor' }); });
+
+    const report = gradeScenario(SCENARIOS[0], result.current.nodes, [], 'block-all');
+    expect(report.intentResults.every(r => !r.reason.includes('niet terugvinden'))).toBe(true);
   });
 });

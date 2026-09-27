@@ -20,12 +20,32 @@ interface SimulationPanelProps {
   onActiveRuleChange?: (ruleId: string | null) => void;
 }
 
+// Status of a tracked connection, as conntrack on a router would show it:
+// the first packet was accepted, and then the reply either came back
+// (established) or not (the entry stays "unreplied").
+type ConnectionStatus = 'pending' | 'established' | 'reply-blocked' | 'followup-blocked';
+
 interface ConnectionEntry {
+  /** One entry per connection: `${sourceId}->${destinationId}`. */
   id: string;
   sourceId: string;
   destinationId: string;
-  state: 'established';
+  status: ConnectionStatus;
 }
+
+const CONNECTION_STATUS: Record<ConnectionStatus, { label: string; className: string }> = {
+  pending: { label: 'wacht op antwoord', className: '' },
+  established: { label: 'established', className: 'border-primary/40 text-primary' },
+  'reply-blocked': { label: 'antwoord geblokkeerd', className: 'border-destructive/40 text-destructive' },
+  'followup-blocked': { label: 'vervolg geblokkeerd', className: 'border-destructive/40 text-destructive' }
+};
+
+// Stable default: a fresh [] on every render would re-trigger the effects
+// that depend on addressLists (and clear the connection table each render).
+const NO_ADDRESS_LISTS: AddressList[] = [];
+
+/** Synthetic trace line: the packet was matched to a connection in the connection table. */
+const CONNTRACK_RULE_ID = 'conntrack';
 
 // 'traveling': the packet of the current stage is on its way (animation);
 // 'checking': the firewall walks through the rules for that packet.
@@ -43,7 +63,7 @@ const NO_CHECKS_SHOWN: Record<ConnectionStage, number> = { request: -1, reply: -
 
 // Synthetic results (security rule, default policy, chain output) are not
 // entries in the rule list, so there is nothing to highlight for them.
-const SYNTHETIC_RULE_IDS = ['security-internet-block', 'default', OUTPUT_CHAIN_RULE_ID];
+const SYNTHETIC_RULE_IDS = ['security-internet-block', 'default', OUTPUT_CHAIN_RULE_ID, CONNTRACK_RULE_ID];
 
 function CheckList({ title, checks, shown }: { title: string; checks: RuleCheckResult[]; shown: number }) {
   return (
@@ -57,11 +77,14 @@ function CheckList({ title, checks, shown }: { title: string; checks: RuleCheckR
               "p-3 rounded-lg border text-sm transition-all",
               check.matched && check.action === 'allow' && "bg-primary/10 border-primary/30",
               check.matched && (check.action === 'drop' || check.action === 'reject') && "bg-destructive/10 border-destructive/30",
-              !check.matched && "bg-muted/50 border-border"
+              !check.matched && check.ruleId !== CONNTRACK_RULE_ID && "bg-muted/50 border-border",
+              check.ruleId === CONNTRACK_RULE_ID && "bg-accent/40 border-accent"
             )}
           >
             <div className="flex items-start gap-2">
-              {check.matched ? (
+              {check.ruleId === CONNTRACK_RULE_ID ? (
+                <Network className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+              ) : check.matched ? (
                 check.action === 'allow' ? (
                   <ShieldCheck className="w-4 h-4 text-primary mt-0.5" />
                 ) : check.action === 'reject' ? (
@@ -85,7 +108,7 @@ export function SimulationPanel({
   nodes,
   rules,
   firewallPolicy,
-  addressLists = [],
+  addressLists = NO_ADDRESS_LISTS,
   simulation,
   onSimulationChange,
   onActiveRuleChange
@@ -128,7 +151,21 @@ export function SimulationPanel({
   const startSimulation = useCallback(() => {
     if (!sourceId || !destinationId) return;
 
-    setEvaluation(evaluateConnection({ nodes, rules, addressLists, firewallPolicy, sourceId, destinationId }));
+    // The reply and the follow-up packets are "established" because the
+    // connection is in the connection table — show that lookup as the first
+    // line of their evaluation.
+    const result = evaluateConnection({ nodes, rules, addressLists, firewallPolicy, sourceId, destinationId });
+    const conntrackLine: RuleCheckResult = {
+      ruleId: CONNTRACK_RULE_ID,
+      matched: false,
+      action: 'continue',
+      reason: `Connectietabel: verbinding ${getNodeName(sourceId)} → ${getNodeName(destinationId)} gevonden — dit pakket hoort bij een bestaande verbinding en heeft daarom state established.`
+    };
+    setEvaluation({
+      ...result,
+      reply: result.reply && [conntrackLine, ...result.reply],
+      followUp: result.followUp && [conntrackLine, ...result.followUp]
+    });
     setStage('request');
     setShownChecks(NO_CHECKS_SHOWN);
     setFinalResult(null);
@@ -136,7 +173,21 @@ export function SimulationPanel({
     onActiveRuleChange?.(null);
     onSimulationChange(packetFor('request'));
     setPhase('traveling');
-  }, [sourceId, destinationId, nodes, rules, addressLists, firewallPolicy, onSimulationChange, onActiveRuleChange, packetFor]);
+  }, [sourceId, destinationId, nodes, rules, addressLists, firewallPolicy, onSimulationChange, onActiveRuleChange, packetFor, getNodeName]);
+
+  const setConnectionStatus = useCallback((status: ConnectionStatus) => {
+    const id = `${sourceId}->${destinationId}`;
+    setConnectionTable(prev => prev.some(e => e.id === id)
+      ? prev.map(e => (e.id === id ? { ...e, status } : e))
+      : [...prev, { id, sourceId, destinationId, status }]);
+  }, [sourceId, destinationId]);
+
+  // The rows describe tests with the ruleset and network as they were; after a
+  // change they would mislead, so start over. (A real router keeps existing
+  // connections after a rule change — see the help text above the table.)
+  useEffect(() => {
+    setConnectionTable(prev => (prev.length === 0 ? prev : []));
+  }, [rules, firewallPolicy, nodes, addressLists]);
 
   const notifyActiveRule = useCallback((ruleId: string) => {
     onActiveRuleChange?.(SYNTHETIC_RULE_IDS.includes(ruleId) ? null : ruleId);
@@ -185,12 +236,9 @@ export function SimulationPanel({
 
       if (check.action === 'allow') {
         if (stage === 'request') {
-          // Connection accepted: register it in the connection table (conntrack)
-          // so the next packets can be evaluated as established traffic.
-          setConnectionTable(prev => [
-            ...prev,
-            { id: `conn-${Date.now()}`, sourceId, destinationId, state: 'established' }
-          ]);
+          // First packet accepted: conntrack registers the connection, so the
+          // next packets can be recognized as established traffic.
+          setConnectionStatus('pending');
         }
         const next = STAGES[STAGES.indexOf(stage) + 1];
         if (next && evaluation[next]) {
@@ -198,6 +246,7 @@ export function SimulationPanel({
           onSimulationChange(packetFor(next));
           setPhase('traveling');
         } else {
+          setConnectionStatus('established');
           setFinalResult('allowed');
           setPhase('complete');
           onSimulationChange(null);
@@ -218,11 +267,13 @@ export function SimulationPanel({
           );
         }
       } else if (stage === 'reply') {
+        setConnectionStatus('reply-blocked');
         setFinalNote(
           `Het verzoek werd toegelaten, maar het antwoord (${dst} → ${src}) werd ${refused}: ` +
           'er is geen regel die established/related verkeer in die richting toestaat.'
         );
       } else {
+        setConnectionStatus('followup-blocked');
         setFinalNote(
           `Verzoek en antwoord kwamen door, maar de vervolgpakketten van ${src} (${src} → ${dst}, established) ` +
           `werden ${refused}. Op een echte router breekt de verbinding dan af: ook de client stuurt na het ` +
@@ -234,8 +285,10 @@ export function SimulationPanel({
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, [phase, stage, shownChecks, evaluation, sourceId, destinationId, onSimulationChange, notifyActiveRule, packetFor, getNodeName]);
+  }, [phase, stage, shownChecks, evaluation, sourceId, destinationId, onSimulationChange, notifyActiveRule, packetFor, getNodeName, setConnectionStatus]);
 
+  // Resets the current run only; the connection table is the history of the
+  // tests so far (one row per connection) and is cleared separately.
   const resetSimulation = () => {
     setPhase('idle');
     setEvaluation(null);
@@ -426,16 +479,33 @@ export function SimulationPanel({
       {connectionTable.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Network className="w-5 h-5" />
-              Connectietabel
-            </CardTitle>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Network className="w-5 h-5" />
+                Connectietabel
+              </CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConnectionTable([])}
+                disabled={phase === 'traveling' || phase === 'checking'}
+              >
+                Tabel leegmaken
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground mb-3">
-              Verbindingen die door een <strong>new</strong>-regel zijn toegelaten, worden hier bijgehouden.
-              Alle volgende pakketten van zo'n verbinding — het antwoord én de vervolgpakketten van de
-              client — hebben de state <strong>established</strong> (of <strong>related</strong>).
+              Zodra het eerste pakket van een verbinding is toegelaten — door een regel of door de default
+              policy — houdt de firewall de verbinding hier bij. Alle volgende pakketten ervan (het antwoord
+              én de vervolgpakketten van de client) worden daaraan herkend en krijgen de state{' '}
+              <strong>established</strong> (of <strong>related</strong>). Komt er geen antwoord door, dan
+              blijft de verbinding onbeantwoord staan.
+            </p>
+            <p className="text-xs text-muted-foreground mb-3">
+              De tabel wordt leeggemaakt als je regels, policy of netwerk wijzigt. Let op: een echte router
+              doet dat niet — een bestaande verbinding blijft er werken, ook als een nieuwe regel ze zou
+              blokkeren.
             </p>
             <Table>
               <TableHeader>
@@ -451,7 +521,9 @@ export function SimulationPanel({
                     <TableCell>{getNodeName(entry.sourceId)}</TableCell>
                     <TableCell>{getNodeName(entry.destinationId)}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">established</Badge>
+                      <Badge variant="outline" className={CONNECTION_STATUS[entry.status].className}>
+                        {CONNECTION_STATUS[entry.status].label}
+                      </Badge>
                     </TableCell>
                   </TableRow>
                 ))}

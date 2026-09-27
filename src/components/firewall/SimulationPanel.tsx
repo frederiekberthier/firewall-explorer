@@ -142,7 +142,6 @@ export function SimulationPanel({
       id: `sim-${Date.now()}`,
       sourceId: isReply ? destinationId : sourceId,
       destinationId: isReply ? sourceId : destinationId,
-      progress: 0,
       direction: isReply ? 'reply' : 'request',
       status: 'traveling'
     };

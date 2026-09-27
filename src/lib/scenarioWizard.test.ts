@@ -11,6 +11,8 @@ import {
   availableNodeNames,
   findTopologyNameIssues,
   intentEndpointOptions,
+  staleIntentEndpoints,
+  requirementsWithStaleChoices,
   WizardDraft
 } from './scenarioWizard';
 
@@ -266,6 +268,47 @@ describe('wizard names with surrounding whitespace', () => {
     const report = gradeScenario(scenario, result.current.nodes, [], 'block-all');
     expect(report.intentResults[0].reason).not.toContain('niet terugvinden');
     expect(report.intentResults[0].pass).toBe(true); // drop intent, block-all, no rules
+  });
+});
+
+describe('stale intent choices after editing the topology', () => {
+  const base = (): WizardDraft => ({
+    title: 'T', markdown: 'M', difficulty: 'basis',
+    requirements: [{ key: 'k1', text: 'DATA mag naar internet' }, { key: 'k2', text: 'SEC niet naar DATA' }],
+    internet: true,
+    vlans: [{ name: 'DATA', hosts: [] }, { name: 'SEC', hosts: [] }],
+    intentChoices: {
+      k1: { from: 'DATA', to: 'Internet', expect: 'allow', state: 'new' },
+      k2: { from: 'SEC', to: 'DATA', expect: 'drop', state: 'new' }
+    }
+  });
+
+  it('reports nothing while every choice still exists', () => {
+    expect(requirementsWithStaleChoices(base())).toEqual([]);
+  });
+
+  it('flags choices that point at a renamed VLAN', () => {
+    const draft = { ...base(), vlans: [{ name: 'KANTOOR', hosts: [] }, { name: 'SEC', hosts: [] }] };
+    expect(staleIntentEndpoints(draft, draft.intentChoices.k1)).toEqual(['DATA']);
+    expect(staleIntentEndpoints(draft, draft.intentChoices.k2)).toEqual(['DATA']);
+    expect(requirementsWithStaleChoices(draft)).toEqual(['k1', 'k2']);
+  });
+
+  it('flags Internet when internet access is unticked', () => {
+    const draft = { ...base(), internet: false };
+    expect(requirementsWithStaleChoices(draft)).toEqual(['k1']);
+  });
+
+  it('flags a wildcard that no longer applies', () => {
+    const draft = { ...base(), intentChoices: { ...base().intentChoices, k1: { from: 'ANY_HOST', to: 'Internet', expect: 'allow' as const } } };
+    // There are no hosts, so "Elke host" is no longer offered.
+    expect(staleIntentEndpoints(draft, draft.intentChoices.k1)).toEqual(['ANY_HOST']);
+  });
+
+  it('ignores requirements without text or without a choice yet', () => {
+    const draft = { ...base(), requirements: [...base().requirements, { key: 'k3', text: '  ' }], internet: false };
+    draft.intentChoices = { ...draft.intentChoices, k3: { from: 'Internet', to: 'DATA', expect: 'drop' } };
+    expect(requirementsWithStaleChoices(draft)).toEqual(['k1']);
   });
 });
 

@@ -238,6 +238,7 @@ export function RuleEditor({
                   <SelectValue placeholder="Selecteer..." />
                 </SelectTrigger>
                 <SelectContent className="bg-popover border border-border">
+                  <SelectItem value="ANY">Alles (ANY)</SelectItem>
                   <SelectItem value="ANY_VLAN">ANY VLAN</SelectItem>
                   {availableNodes.map(node => (
                     <SelectItem key={node.id} value={node.id}>
@@ -260,6 +261,7 @@ export function RuleEditor({
                   <SelectValue placeholder="Selecteer..." />
                 </SelectTrigger>
                 <SelectContent className="bg-popover border border-border">
+                  <SelectItem value="ANY">Alles (ANY)</SelectItem>
                   <SelectItem value="ANY_VLAN">ANY VLAN</SelectItem>
                   {destinationNodes.filter(n => n.id !== sourceId).map(node => (
                     <SelectItem key={node.id} value={node.id}>

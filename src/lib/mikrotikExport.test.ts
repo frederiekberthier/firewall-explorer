@@ -117,11 +117,24 @@ describe('buildMikrotikConfig wildcards', () => {
     expect(config.match(/list=any_vlan address=192\.168\.10\.0\/24/g)).toHaveLength(1);
   });
 
-  it('exports ANY without restriction, e.g. the global "accept established,related" rule', () => {
+  it('exports ANY -> ANY as the MikroTik default pair: input and forward, without restriction', () => {
     const config = exportRules([
       { id: 'r1', sourceId: 'ANY', destinationId: 'ANY', connectionStates: ['established', 'related'], action: 'allow', order: 0 }
     ]);
-    expect(ruleLine(config)).toMatch(/^\/ip firewall filter add chain=forward connection-state=established,related action=accept /);
+    const lines = activeFilterLines(config).filter(l => l.includes('comment="Rule 1:'));
+    expect(lines).toEqual([
+      '/ip firewall filter add chain=input connection-state=established,related action=accept comment="Rule 1: ANY -> ANY (established,related) [input]"',
+      '/ip firewall filter add chain=forward connection-state=established,related action=accept comment="Rule 1: ANY -> ANY (established,related) [forward]"'
+    ]);
+  });
+
+  it('keeps a single forward rule when ANY is only the source', () => {
+    const config = exportRules([
+      { id: 'r1', sourceId: 'ANY', destinationId: 'data', connectionStates: ['established'], action: 'allow', order: 0 }
+    ]);
+    const lines = activeFilterLines(config).filter(l => l.includes('comment="Rule 1:'));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('chain=forward dst-address-list=data');
   });
 
   it('gives clashing names distinct RouterOS lists instead of merging them', () => {

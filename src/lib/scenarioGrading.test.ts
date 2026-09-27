@@ -184,3 +184,34 @@ describe('gradeScenario', () => {
     expect(report.intentResults.filter(r => r.intent.id !== 'i1').every(r => r.pass)).toBe(true);
   });
 });
+
+describe('lintRules and the "Alles (ANY)" option', () => {
+  const globalEstablished = rule({ id: 'g', sourceId: 'ANY', destinationId: 'ANY', connectionStates: ['established', 'related'] });
+
+  it('warns when ANY as source allows new traffic (that includes Internet)', () => {
+    const findings = lintRules([rule({ id: 'r1', sourceId: 'ANY', destinationId: data.id, connectionStates: ['new'] })]);
+    expect(findings.find(f => f.id === 'any-new-allow-r1')?.severity).toBe('warning');
+  });
+
+  it('does not warn about ANY for established-only or drop rules', () => {
+    const findings = lintRules([
+      { ...globalEstablished, order: 0 },
+      rule({ id: 'd', sourceId: 'ANY', destinationId: sec.id, connectionStates: ['new'], action: 'drop', order: 1 })
+    ]);
+    expect(findings.some(f => f.id.startsWith('any-new-allow'))).toBe(false);
+  });
+
+  it('suggests moving the global established rule to the top when it is not first', () => {
+    const findings = lintRules([rule({ id: 'r1', order: 0 }), { ...globalEstablished, order: 1 }]);
+    expect(findings.find(f => f.id === 'global-established-not-first')?.message).toContain('positie 2');
+
+    const onTop = lintRules([{ ...globalEstablished, order: 0 }, rule({ id: 'r1', order: 1 })]);
+    expect(onTop.some(f => f.id === 'global-established-not-first')).toBe(false);
+  });
+
+  it('lets one global established rule plus a new rule satisfy a whole connection', () => {
+    const intent = SCENARIOS[0].intents!.find(i => i.id === 'i1')!; // DATA -> Internet, expect allow
+    const rules = [{ ...globalEstablished, order: 0 }, rule({ id: 'r1', order: 1 })];
+    expect(runIntent(intent, nodes, rules, 'block-all').pass).toBe(true);
+  });
+});

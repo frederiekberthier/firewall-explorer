@@ -231,6 +231,35 @@ export function lintRules(rules: FirewallRule[]): LintFinding[] {
     }
   }
 
+  // ANY as source includes Internet: an allow for new traffic then also
+  // lets new connections from Internet in — the security rule only applies
+  // when no rule matches at all.
+  sorted
+    .filter(r => r.sourceId === 'ANY' && r.action === 'allow' && r.connectionStates.includes('new'))
+    .forEach(r => {
+      findings.push({
+        id: `any-new-allow-${r.id}`,
+        severity: 'warning',
+        message: 'Regel met bron "Alles (ANY)" laat nieuw verkeer toe — ook nieuwe verbindingen vanaf Internet. Beperk de bron (bv. ANY VLAN) als dat niet de bedoeling is.',
+        ruleIds: [r.id]
+      });
+    });
+
+  // The global "accept established,related" rule belongs at the top: faster
+  // on the router, and no earlier drop can then stop reply traffic.
+  const globalEstablished = sorted.findIndex(r =>
+    r.sourceId === 'ANY' && r.destinationId === 'ANY' && r.action === 'allow' &&
+    (r.connectionStates.includes('established') || r.connectionStates.includes('related'))
+  );
+  if (globalEstablished > 0) {
+    findings.push({
+      id: 'global-established-not-first',
+      severity: 'suggestion',
+      message: `De algemene established/related-regel (Alles → Alles) staat op positie ${globalEstablished + 1}. Zet ze bij voorkeur bovenaan: dat is sneller op de router, en een eerdere drop-regel kan dan geen antwoordverkeer tegenhouden.`,
+      ruleIds: [sorted[globalEstablished].id]
+    });
+  }
+
   if (rules.length > 0 && !rules.some(r => r.connectionStates.includes('invalid') && r.action !== 'allow')) {
     findings.push({
       id: 'missing-invalid-drop',

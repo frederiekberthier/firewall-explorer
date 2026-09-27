@@ -1,6 +1,6 @@
 import { NetworkNode, FirewallRule, FirewallPolicy, AddressList } from '@/types/firewall';
 import { Scenario, ScenarioIntent } from '@/types/scenario';
-import { checkRules } from './firewallEngine';
+import { checkRules, evaluateConnection } from './firewallEngine';
 
 export interface IntentResult {
   intent: ScenarioIntent;
@@ -64,9 +64,10 @@ function resolveIntentRef(ref: string, nodes: NetworkNode[]): NetworkNode[] {
  * students learn to reason about the two phases step by step). Without a
  * `state` (older/hand-written scenarios), the original combined behavior is
  * kept: `expect: 'drop'` only checks the request, `expect: 'allow'` checks
- * the full round trip (request AND reply must both get through) — a rule
- * that only lets the request in without a matching established/related rule
- * does not satisfy "mag verbinden met".
+ * the whole connection (see evaluateConnection): the request, the reply in
+ * the reverse direction and the client's follow-up packets must all get
+ * through — a rule that only lets the request in does not satisfy
+ * "mag verbinden met".
  */
 function checkPair(
   fromNode: NetworkNode,
@@ -104,53 +105,49 @@ function checkPair(
     };
   }
 
-  // No explicit state: legacy combined behavior.
-  const forward = checkRules({
+  // No explicit state: the whole connection. A drop intent only needs the
+  // request to be blocked; an allow intent needs the request, the reply
+  // (reversed direction) and the client's follow-up packets to pass — on a
+  // real router the connection breaks if any of the three is dropped.
+  const connection = evaluateConnection({
     nodes,
     rules,
     addressLists,
     firewallPolicy,
     sourceId: fromNode.id,
-    destinationId: toNode.id,
-    isReply: false
+    destinationId: toNode.id
   });
-  const forwardVerdict = forward[forward.length - 1];
-  const forwardAllowed = forwardVerdict.action === 'allow';
+  const requestVerdict = connection.request[connection.request.length - 1];
+  const requestAllowed = requestVerdict.action === 'allow';
 
   if (expect === 'drop') {
     return {
-      pass: !forwardAllowed,
-      reason: forwardAllowed
-        ? `Verkeer werd onverwacht toegelaten: ${forwardVerdict.reason}`
-        : forwardVerdict.reason
+      pass: !requestAllowed,
+      reason: requestAllowed
+        ? `Verkeer werd onverwacht toegelaten: ${requestVerdict.reason}`
+        : requestVerdict.reason
     };
   }
 
-  // expect === 'allow': the request must get through AND come back
-  // (established/related). A rule that only allows 'new' is not enough: the
-  // reply would then hit the default policy and be dropped.
-  if (!forwardAllowed) {
-    return { pass: false, reason: `Nieuw verkeer werd geblokkeerd: ${forwardVerdict.reason}` };
+  if (connection.blockedAt === 'request') {
+    return { pass: false, reason: `Nieuw verkeer werd geblokkeerd: ${requestVerdict.reason}` };
+  }
+  if (connection.blockedAt === 'reply') {
+    const verdict = connection.reply![connection.reply!.length - 1];
+    return {
+      pass: false,
+      reason: `Verzoek werd toegelaten, maar het antwoord (${toNode.name} → ${fromNode.name}) niet: ${verdict.reason}`
+    };
+  }
+  if (connection.blockedAt === 'followUp') {
+    const verdict = connection.followUp![connection.followUp!.length - 1];
+    return {
+      pass: false,
+      reason: `Verzoek en antwoord kwamen door, maar de vervolgpakketten (${fromNode.name} → ${toNode.name}, established) niet: ${verdict.reason}`
+    };
   }
 
-  const reply = checkRules({
-    nodes,
-    rules,
-    addressLists,
-    firewallPolicy,
-    sourceId: fromNode.id,
-    destinationId: toNode.id,
-    isReply: true
-  });
-  const replyVerdict = reply[reply.length - 1];
-  const replyAllowed = replyVerdict.action === 'allow';
-
-  return {
-    pass: replyAllowed,
-    reason: replyAllowed
-      ? forwardVerdict.reason
-      : `Verzoek werd toegelaten, maar het antwoord niet: ${replyVerdict.reason}`
-  };
+  return { pass: true, reason: requestVerdict.reason };
 }
 
 export function runIntent(

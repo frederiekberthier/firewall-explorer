@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Play, RotateCcw, ShieldCheck, ShieldX, ShieldAlert, ArrowRight, ArrowLeft, Network } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getNodeName as getNodeNameForNodes } from '@/lib/nodeNames';
-import { checkRules as evaluatePacket, RuleCheckResult } from '@/lib/firewallEngine';
+import { evaluateConnection, ConnectionEvaluation, ConnectionStage, RuleCheckResult, OUTPUT_CHAIN_RULE_ID } from '@/lib/firewallEngine';
 
 interface SimulationPanelProps {
   nodes: NetworkNode[];
@@ -27,7 +27,59 @@ interface ConnectionEntry {
   state: 'established';
 }
 
-type SimPhase = 'idle' | 'request' | 'checking' | 'response' | 'reply-checking' | 'complete';
+// 'traveling': the packet of the current stage is on its way (animation);
+// 'checking': the firewall walks through the rules for that packet.
+type SimPhase = 'idle' | 'traveling' | 'checking' | 'complete';
+
+// The three packets a stateful firewall sees for one connection (as in a TCP
+// handshake). All three must pass, as on a real router.
+const STAGES: ConnectionStage[] = ['request', 'reply', 'followUp'];
+const STAGE_INFO: Record<ConnectionStage, { label: string; title: string }> = {
+  request: { label: 'Verzoek', title: 'verzoek (new)' },
+  reply: { label: 'Antwoord', title: 'antwoord (established)' },
+  followUp: { label: 'Vervolg', title: 'vervolgpakketten (established)' }
+};
+const NO_CHECKS_SHOWN: Record<ConnectionStage, number> = { request: -1, reply: -1, followUp: -1 };
+
+// Synthetic results (security rule, default policy, chain output) are not
+// entries in the rule list, so there is nothing to highlight for them.
+const SYNTHETIC_RULE_IDS = ['security-internet-block', 'default', OUTPUT_CHAIN_RULE_ID];
+
+function CheckList({ title, checks, shown }: { title: string; checks: RuleCheckResult[]; shown: number }) {
+  return (
+    <div className="space-y-2">
+      <h4 className="text-sm font-medium">{title}</h4>
+      <div className="space-y-2 max-h-96 overflow-y-auto">
+        {checks.slice(0, shown + 1).map((check, idx) => (
+          <div
+            key={idx}
+            className={cn(
+              "p-3 rounded-lg border text-sm transition-all",
+              check.matched && check.action === 'allow' && "bg-primary/10 border-primary/30",
+              check.matched && (check.action === 'drop' || check.action === 'reject') && "bg-destructive/10 border-destructive/30",
+              !check.matched && "bg-muted/50 border-border"
+            )}
+          >
+            <div className="flex items-start gap-2">
+              {check.matched ? (
+                check.action === 'allow' ? (
+                  <ShieldCheck className="w-4 h-4 text-primary mt-0.5" />
+                ) : check.action === 'reject' ? (
+                  <ShieldAlert className="w-4 h-4 text-destructive mt-0.5" />
+                ) : (
+                  <ShieldX className="w-4 h-4 text-destructive mt-0.5" />
+                )
+              ) : (
+                <span className="w-4 h-4 text-muted-foreground">→</span>
+              )}
+              <span>{check.reason}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function SimulationPanel({
   nodes,
@@ -41,10 +93,10 @@ export function SimulationPanel({
   const fieldId = useId();
   const [sourceId, setSourceId] = useState<string>('');
   const [destinationId, setDestinationId] = useState<string>('');
-  const [ruleChecks, setRuleChecks] = useState<RuleCheckResult[]>([]);
-  const [currentCheckIndex, setCurrentCheckIndex] = useState<number>(-1);
-  const [replyChecks, setReplyChecks] = useState<RuleCheckResult[]>([]);
-  const [currentReplyCheckIndex, setCurrentReplyCheckIndex] = useState<number>(-1);
+  const [evaluation, setEvaluation] = useState<ConnectionEvaluation | null>(null);
+  const [stage, setStage] = useState<ConnectionStage>('request');
+  // Per stage: index of the last rule check revealed so far (-1 = none yet).
+  const [shownChecks, setShownChecks] = useState<Record<ConnectionStage, number>>(NO_CHECKS_SHOWN);
   const [finalResult, setFinalResult] = useState<'allowed' | 'dropped' | null>(null);
   const [finalNote, setFinalNote] = useState<string | null>(null);
   const [connectionTable, setConnectionTable] = useState<ConnectionEntry[]>([]);
@@ -56,144 +108,126 @@ export function SimulationPanel({
   // host/VLAN reach the router itself" (chain input) is opt-in, not a
   // required part of the inter-VLAN/host traffic this simulator focuses on.
   const destinationNodes = routerNode ? [...availableNodes, routerNode] : availableNodes;
-  const getNodeName = (id: string) => getNodeNameForNodes(nodes, id, addressLists);
+  const getNodeName = useCallback((id: string) => getNodeNameForNodes(nodes, id, addressLists), [nodes, addressLists]);
 
-  // Thin wrapper around the pure engine (src/lib/firewallEngine.ts) — the
-  // actual matching/evaluation logic lives there so it has no React
-  // dependency and can be unit-tested or reused by a future batch grader.
-  const checkRules = useCallback((srcId: string, dstId: string, isReply: boolean): RuleCheckResult[] =>
-    evaluatePacket({ nodes, rules, addressLists, firewallPolicy, sourceId: srcId, destinationId: dstId, isReply }),
-    [nodes, rules, addressLists, firewallPolicy]);
+  // The whole connection is evaluated up front by the pure engine
+  // (src/lib/firewallEngine.ts); this component only animates the result
+  // stage by stage.
+  const packetFor = useCallback((forStage: ConnectionStage): SimulationPacket => {
+    const isReply = forStage === 'reply';
+    return {
+      id: `sim-${Date.now()}`,
+      sourceId: isReply ? destinationId : sourceId,
+      destinationId: isReply ? sourceId : destinationId,
+      progress: 0,
+      direction: isReply ? 'reply' : 'request',
+      status: 'traveling'
+    };
+  }, [sourceId, destinationId]);
 
   const startSimulation = useCallback(() => {
     if (!sourceId || !destinationId) return;
 
-    setPhase('request');
-    setRuleChecks([]);
-    setCurrentCheckIndex(-1);
-    setReplyChecks([]);
-    setCurrentReplyCheckIndex(-1);
+    setEvaluation(evaluateConnection({ nodes, rules, addressLists, firewallPolicy, sourceId, destinationId }));
+    setStage('request');
+    setShownChecks(NO_CHECKS_SHOWN);
     setFinalResult(null);
     setFinalNote(null);
     onActiveRuleChange?.(null);
+    onSimulationChange(packetFor('request'));
+    setPhase('traveling');
+  }, [sourceId, destinationId, nodes, rules, addressLists, firewallPolicy, onSimulationChange, onActiveRuleChange, packetFor]);
 
-    onSimulationChange({
-      id: `sim-${Date.now()}`,
-      sourceId,
-      destinationId,
-      progress: 0,
-      direction: 'request',
-      status: 'traveling'
-    });
-
-    // Simulate packet traveling to router
-    setTimeout(() => {
-      setPhase('checking');
-      const checks = checkRules(sourceId, destinationId, false);
-      setRuleChecks(checks);
-      setCurrentCheckIndex(0);
-    }, 1500);
-  }, [sourceId, destinationId, checkRules, onSimulationChange, onActiveRuleChange]);
-
-  // A rule id of 'security-internet-block' / 'default' is a synthetic fallback,
-  // not an actual entry in the rule list, so it has nothing to highlight there.
   const notifyActiveRule = useCallback((ruleId: string) => {
-    onActiveRuleChange?.(ruleId === 'security-internet-block' || ruleId === 'default' ? null : ruleId);
+    onActiveRuleChange?.(SYNTHETIC_RULE_IDS.includes(ruleId) ? null : ruleId);
   }, [onActiveRuleChange]);
 
-  // Animate through rule checks for the outgoing (new) request
+  // Packet travel animation; the cleanup cancels it when the simulation is
+  // reset or restarted mid-way.
   useEffect(() => {
-    if (phase !== 'checking' || currentCheckIndex < 0) return;
+    if (phase !== 'traveling') return;
+    const timer = setTimeout(() => {
+      setShownChecks(prev => ({ ...prev, [stage]: 0 }));
+      setPhase('checking');
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [phase, stage]);
+
+  // Walk through the rule checks of the current stage, one per tick.
+  useEffect(() => {
+    if (phase !== 'checking' || !evaluation) return;
+    const checks = evaluation[stage];
+    const index = shownChecks[stage];
+    if (!checks || index < 0) return;
 
     const timer = setTimeout(() => {
-      const check = ruleChecks[currentCheckIndex];
+      const check = checks[index];
 
-      if (check.matched) {
-        notifyActiveRule(check.ruleId);
+      if (!check.matched) {
+        if (index < checks.length - 1) setShownChecks(prev => ({ ...prev, [stage]: index + 1 }));
+        return;
+      }
 
-        if (check.action === 'allow') {
+      notifyActiveRule(check.ruleId);
+
+      if (check.action === 'allow') {
+        if (stage === 'request') {
           // Connection accepted: register it in the connection table (conntrack)
-          // so the reply can later be evaluated as established/related traffic.
+          // so the next packets can be evaluated as established traffic.
           setConnectionTable(prev => [
             ...prev,
             { id: `conn-${Date.now()}`, sourceId, destinationId, state: 'established' }
           ]);
-          setFinalResult('allowed');
-
-          setPhase('response');
-          onSimulationChange({
-            id: `sim-${Date.now()}`,
-            sourceId: destinationId,
-            destinationId: sourceId,
-            progress: 0,
-            direction: 'reply',
-            status: 'traveling'
-          });
-
-          setTimeout(() => {
-            setPhase('reply-checking');
-            const replyResult = checkRules(sourceId, destinationId, true);
-            setReplyChecks(replyResult);
-            setCurrentReplyCheckIndex(0);
-          }, 1500);
+        }
+        const next = STAGES[STAGES.indexOf(stage) + 1];
+        if (next && evaluation[next]) {
+          setStage(next);
+          onSimulationChange(packetFor(next));
+          setPhase('traveling');
         } else {
-          setFinalResult('dropped');
-          if (check.action === 'reject') {
-            setFinalNote(
-              'De regel gebruikt REJECT: de firewall stuurt een actieve weigering terug ' +
-              '(bv. "destination unreachable"), in tegenstelling tot DROP dat het pakket stil negeert.'
-            );
-          }
+          setFinalResult('allowed');
           setPhase('complete');
           onSimulationChange(null);
         }
-      } else if (currentCheckIndex < ruleChecks.length - 1) {
-        setCurrentCheckIndex(prev => prev + 1);
+        return;
       }
-    }, 1200);
 
-    return () => clearTimeout(timer);
-  }, [phase, currentCheckIndex, ruleChecks, sourceId, destinationId, checkRules, onSimulationChange, notifyActiveRule]);
-
-  // Animate through rule checks for the reply packet — this is the part that
-  // used to be skipped entirely, which made every accepted request look
-  // successful even without a matching established/related rule.
-  useEffect(() => {
-    if (phase !== 'reply-checking' || currentReplyCheckIndex < 0) return;
-
-    const timer = setTimeout(() => {
-      const check = replyChecks[currentReplyCheckIndex];
-
-      if (check.matched) {
-        if (check.action === 'drop' || check.action === 'reject') {
-          setFinalResult('dropped');
-          notifyActiveRule(check.ruleId);
+      // drop or reject
+      const src = getNodeName(sourceId);
+      const dst = getNodeName(destinationId);
+      const refused = check.action === 'reject' ? 'actief geweigerd (REJECT)' : 'geblokkeerd';
+      setFinalResult('dropped');
+      if (stage === 'request') {
+        if (check.action === 'reject') {
           setFinalNote(
-            check.action === 'reject'
-              ? 'Het verzoek werd toegelaten, maar het antwoordpakket werd actief geweigerd (REJECT): ' +
-                'er is geen regel die established/related verkeer voor deze verbinding toestaat.'
-              : 'Het verzoek werd toegelaten, maar het antwoordpakket werd geblokkeerd: ' +
-                'er is geen regel die established/related verkeer voor deze verbinding toestaat.'
+            'De regel gebruikt REJECT: de firewall stuurt een actieve weigering terug ' +
+            '(bv. "destination unreachable"), in tegenstelling tot DROP dat het pakket stil negeert.'
           );
-        } else {
-          notifyActiveRule(check.ruleId);
         }
-        setPhase('complete');
-        onSimulationChange(null);
-      } else if (currentReplyCheckIndex < replyChecks.length - 1) {
-        setCurrentReplyCheckIndex(prev => prev + 1);
+      } else if (stage === 'reply') {
+        setFinalNote(
+          `Het verzoek werd toegelaten, maar het antwoord (${dst} → ${src}) werd ${refused}: ` +
+          'er is geen regel die established/related verkeer in die richting toestaat.'
+        );
+      } else {
+        setFinalNote(
+          `Verzoek en antwoord kwamen door, maar de vervolgpakketten van ${src} (${src} → ${dst}, established) ` +
+          `werden ${refused}. Op een echte router breekt de verbinding dan af: ook de client stuurt na het ` +
+          'eerste pakket established verkeer, dus ook die richting heeft een established-regel nodig.'
+        );
       }
+      setPhase('complete');
+      onSimulationChange(null);
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, [phase, currentReplyCheckIndex, replyChecks, onSimulationChange, notifyActiveRule]);
+  }, [phase, stage, shownChecks, evaluation, sourceId, destinationId, onSimulationChange, notifyActiveRule, packetFor, getNodeName]);
 
   const resetSimulation = () => {
     setPhase('idle');
-    setRuleChecks([]);
-    setCurrentCheckIndex(-1);
-    setReplyChecks([]);
-    setCurrentReplyCheckIndex(-1);
+    setEvaluation(null);
+    setStage('request');
+    setShownChecks(NO_CHECKS_SHOWN);
     setFinalResult(null);
     setFinalNote(null);
     onActiveRuleChange?.(null);
@@ -306,102 +340,39 @@ export function SimulationPanel({
             <CardTitle className="text-lg">Simulatie status</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Phase indicator */}
-            <div className="flex items-center gap-4">
-              <div className={cn(
-                "flex items-center gap-2 px-3 py-2 rounded-lg",
-                phase === 'request' ? "bg-primary/20 text-primary" : "bg-muted"
-              )}>
-                <ArrowRight className="w-4 h-4" />
-                <span className="text-sm font-medium">Request</span>
-              </div>
-
-              <div className={cn(
-                "flex items-center gap-2 px-3 py-2 rounded-lg",
-                phase === 'checking' ? "bg-primary/20 text-primary" : "bg-muted"
-              )}>
-                <ShieldCheck className="w-4 h-4" />
-                <span className="text-sm font-medium">Regel check</span>
-              </div>
-
-              <div className={cn(
-                "flex items-center gap-2 px-3 py-2 rounded-lg",
-                (phase === 'response' || phase === 'reply-checking') ? "bg-primary/20 text-primary" : "bg-muted"
-              )}>
-                <ArrowLeft className="w-4 h-4" />
-                <span className="text-sm font-medium">Reply</span>
-              </div>
+            {/* Stage indicator: the three packets of one connection */}
+            <div className="flex flex-wrap items-center gap-2">
+              {STAGES.map((st, idx) => (
+                <div key={st} className="flex items-center gap-2">
+                  <div
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-2 rounded-lg",
+                      phase !== 'complete' && stage === st ? "bg-primary/20 text-primary" : "bg-muted"
+                    )}
+                    aria-current={phase !== 'complete' && stage === st ? 'step' : undefined}
+                  >
+                    {st === 'reply' ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
+                    <span className="text-sm font-medium">{STAGE_INFO[st].label}</span>
+                  </div>
+                  {idx < STAGES.length - 1 && <span className="text-muted-foreground" aria-hidden="true">›</span>}
+                </div>
+              ))}
             </div>
 
-            {/* Rule checks for the outgoing (new) request */}
-            {ruleChecks.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="text-sm font-medium">Firewall regel evaluatie — verzoek (new):</h4>
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {ruleChecks.slice(0, currentCheckIndex + 1).map((check, idx) => (
-                    <div
-                      key={idx}
-                      className={cn(
-                        "p-3 rounded-lg border text-sm transition-all",
-                        check.matched && check.action === 'allow' && "bg-primary/10 border-primary/30",
-                        check.matched && (check.action === 'drop' || check.action === 'reject') && "bg-destructive/10 border-destructive/30",
-                        !check.matched && "bg-muted/50 border-border"
-                      )}
-                    >
-                      <div className="flex items-start gap-2">
-                        {check.matched ? (
-                          check.action === 'allow' ? (
-                            <ShieldCheck className="w-4 h-4 text-primary mt-0.5" />
-                          ) : check.action === 'reject' ? (
-                            <ShieldAlert className="w-4 h-4 text-destructive mt-0.5" />
-                          ) : (
-                            <ShieldX className="w-4 h-4 text-destructive mt-0.5" />
-                          )
-                        ) : (
-                          <span className="w-4 h-4 text-muted-foreground">→</span>
-                        )}
-                        <span>{check.reason}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Rule checks for the reply packet (established/related) */}
-            {replyChecks.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="text-sm font-medium">Firewall regel evaluatie — antwoord (established/related):</h4>
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {replyChecks.slice(0, currentReplyCheckIndex + 1).map((check, idx) => (
-                    <div
-                      key={idx}
-                      className={cn(
-                        "p-3 rounded-lg border text-sm transition-all",
-                        check.matched && check.action === 'allow' && "bg-primary/10 border-primary/30",
-                        check.matched && (check.action === 'drop' || check.action === 'reject') && "bg-destructive/10 border-destructive/30",
-                        !check.matched && "bg-muted/50 border-border"
-                      )}
-                    >
-                      <div className="flex items-start gap-2">
-                        {check.matched ? (
-                          check.action === 'allow' ? (
-                            <ShieldCheck className="w-4 h-4 text-primary mt-0.5" />
-                          ) : check.action === 'reject' ? (
-                            <ShieldAlert className="w-4 h-4 text-destructive mt-0.5" />
-                          ) : (
-                            <ShieldX className="w-4 h-4 text-destructive mt-0.5" />
-                          )
-                        ) : (
-                          <span className="w-4 h-4 text-muted-foreground">→</span>
-                        )}
-                        <span>{check.reason}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Rule checks per stage, with the packet's real direction */}
+            {evaluation && STAGES.map(st => {
+              const checks = evaluation[st];
+              if (!checks || shownChecks[st] < 0) return null;
+              const [from, to] = st === 'reply' ? [destinationId, sourceId] : [sourceId, destinationId];
+              return (
+                <CheckList
+                  key={st}
+                  title={`Firewall regel evaluatie — ${STAGE_INFO[st].title}: ${getNodeName(from)} → ${getNodeName(to)}`}
+                  checks={checks}
+                  shown={shownChecks[st]}
+                />
+              );
+            })}
 
             {/* Final result */}
             {phase === 'complete' && finalResult && (
@@ -450,8 +421,8 @@ export function SimulationPanel({
           <CardContent>
             <p className="text-xs text-muted-foreground mb-3">
               Verbindingen die door een <strong>new</strong>-regel zijn toegelaten, worden hier bijgehouden.
-              Enkel antwoordverkeer op een reeds bestaande verbinding kan matchen als
-              <strong> established</strong> of <strong>related</strong>.
+              Alle volgende pakketten van zo'n verbinding — het antwoord én de vervolgpakketten van de
+              client — hebben de state <strong>established</strong> (of <strong>related</strong>).
             </p>
             <Table>
               <TableHeader>

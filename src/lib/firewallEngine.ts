@@ -15,8 +15,10 @@ export interface CheckRulesInput {
   /** Named groups of VLANs/hosts a rule's source/destination may reference. */
   addressLists?: AddressList[];
   firewallPolicy: FirewallPolicy;
+  /** The actual packet: its real source and destination (a reply goes back, so it is the request reversed). */
   sourceId: string;
   destinationId: string;
+  /** true for a packet of an existing connection (state established), false for the first packet (state new). */
   isReply: boolean;
 }
 
@@ -59,11 +61,19 @@ export function matchesWildcard(
   return false;
 }
 
+/** Synthetic result id for a packet sent by the router itself (chain output). */
+export const OUTPUT_CHAIN_RULE_ID = 'output-chain';
+
 /**
  * Pure rule-evaluation engine: given a topology, a ruleset, the default
- * policy and one packet (source, destination, whether it's reply traffic),
- * returns the top-to-bottom evaluation trace, first match wins. No React,
- * no side effects — safe to call from tests or a future batch grader.
+ * policy and one packet (its real source and destination, and whether it
+ * belongs to an existing connection), returns the top-to-bottom evaluation
+ * trace, first match wins. No React, no side effects — safe to call from
+ * tests or a batch grader.
+ *
+ * Rules match literally, like RouterOS: source and destination must match
+ * the packet as it travels. A reply therefore needs a rule in the reply
+ * direction (or a rule with ANY), not the rule of the original request.
  */
 export function checkRules({
   nodes,
@@ -84,6 +94,18 @@ export function checkRules({
   const packetSrcName = getNodeName(nodes, srcId, addressLists);
   const packetDstName = getNodeName(nodes, dstId, addressLists);
 
+  // Traffic the router itself sends (e.g. its reply to a management
+  // connection) leaves through chain output, which the simulator does not
+  // filter — on RouterOS that chain accepts by default as well.
+  if (sourceNode?.type === 'router') {
+    return [{
+      ruleId: OUTPUT_CHAIN_RULE_ID,
+      matched: true,
+      action: 'allow',
+      reason: `Pakket komt van de router zelf (${packetSrcName} → ${packetDstName}): dat is chain output, die de simulator niet filtert — doorgelaten.`
+    }];
+  }
+
   // Rules are evaluated top to bottom, first match wins. Sort a copy: sorting
   // the caller's array in place would silently reorder React state.
   const sortedRules = [...rules].sort((a, b) => a.order - b.order);
@@ -102,20 +124,20 @@ export function checkRules({
     const directMatch = directSrcMatch && directDstMatch;
     const reverseMatch = reverseSrcMatch && reverseDstMatch;
 
-    // A fresh (new) request must match the rule's exact configured direction.
-    // Only established/related return traffic is allowed to match in reverse.
-    const directionOk = directMatch || (isReply && reverseMatch);
-
-    if (!directionOk) {
+    if (!directMatch) {
       // Derive the reason from the first criterion that actually fails, in
-      // order: richting (direction) -> bron -> bestemming.
-      if (reverseMatch && !isReply) {
+      // order: richting (direction) -> bron -> bestemming. reverseMatch is only
+      // used for this explanation — rules never match in reverse.
+      if (reverseMatch) {
+        const hint = isReply
+          ? ` Voor dit pakket heb je een regel ${packetSrcName} → ${packetDstName} (established) nodig, of een regel met ANY.`
+          : '';
         results.push({
           ruleId: rule.id,
           ruleNumber,
           matched: false,
           action: 'continue',
-          reason: `Regel ${ruleNumber} (${srcName} → ${dstName}): verkeerde richting — deze regel geldt enkel voor nieuw verkeer ${srcName} → ${dstName}, dit pakket gaat ${packetSrcName} → ${packetDstName}. Ga verder...`
+          reason: `Regel ${ruleNumber} (${srcName} → ${dstName}): verkeerde richting — deze regel geldt voor verkeer ${srcName} → ${dstName}, dit pakket gaat ${packetSrcName} → ${packetDstName}.${hint} Ga verder...`
         });
       } else if (!directSrcMatch) {
         results.push({
@@ -189,4 +211,46 @@ export function checkRules({
   }
 
   return results;
+}
+
+export type ConnectionStage = 'request' | 'reply' | 'followUp';
+
+export interface ConnectionEvaluation {
+  /** First packet, source -> destination, state new. */
+  request: RuleCheckResult[];
+  /** Answer, destination -> source, state established (absent if the request was blocked). */
+  reply?: RuleCheckResult[];
+  /** Next packets of the client, source -> destination, state established (absent if the reply was blocked). */
+  followUp?: RuleCheckResult[];
+  /** true only when all three stages were allowed. */
+  allowed: boolean;
+  /** The stage that blocked the connection, if any. */
+  blockedAt?: ConnectionStage;
+}
+
+export const finalAction = (results: RuleCheckResult[]) => results[results.length - 1]?.action;
+
+/**
+ * Evaluates a whole connection the way a stateful firewall sees it (as in
+ * a TCP handshake): the request (new), the reply coming back (established,
+ * reversed direction) and the client's next packets (established, original
+ * direction). On RouterOS all three must pass, otherwise the connection
+ * breaks — which is why the classic setup uses one global
+ * "accept established,related" rule.
+ */
+export function evaluateConnection(
+  input: Omit<CheckRulesInput, 'isReply'>
+): ConnectionEvaluation {
+  const { sourceId, destinationId } = input;
+
+  const request = checkRules({ ...input, isReply: false });
+  if (finalAction(request) !== 'allow') return { request, allowed: false, blockedAt: 'request' };
+
+  const reply = checkRules({ ...input, sourceId: destinationId, destinationId: sourceId, isReply: true });
+  if (finalAction(reply) !== 'allow') return { request, reply, allowed: false, blockedAt: 'reply' };
+
+  const followUp = checkRules({ ...input, isReply: true });
+  if (finalAction(followUp) !== 'allow') return { request, reply, followUp, allowed: false, blockedAt: 'followUp' };
+
+  return { request, reply, followUp, allowed: true };
 }

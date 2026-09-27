@@ -30,7 +30,7 @@ export const SCENARIOS: Scenario[] = [
       ]
     },
     intents: [
-      { id: 'i1', requirementId: 'R1', description: 'DATA -> Internet (new + reply)', from: 'DATA', to: 'Internet', expect: 'allow' },
+      { id: 'i1', requirementId: 'R1', description: 'DATA -> Internet (verbinding: new + established heen en terug)', from: 'DATA', to: 'Internet', expect: 'allow' },
       { id: 'i2', requirementId: 'R2', description: 'SEC -> Internet (new)', from: 'SEC', to: 'Internet', expect: 'drop' },
       { id: 'i3', requirementId: 'R3', description: 'DATA -> SEC (new)', from: 'DATA', to: 'SEC', expect: 'drop' },
       { id: 'i4', requirementId: 'R4', description: 'SEC -> DATA (new)', from: 'SEC', to: 'DATA', expect: 'drop' }
@@ -58,10 +58,10 @@ export const SCENARIOS: Scenario[] = [
       ]
     },
     intents: [
-      { id: 'i1', requirementId: 'R1', description: 'STAFF -> Internet (new + reply)', from: 'STAFF', to: 'Internet', expect: 'allow' },
-      { id: 'i2', requirementId: 'R2', description: 'GUEST -> Internet (new + reply)', from: 'GUEST', to: 'Internet', expect: 'allow' },
+      { id: 'i1', requirementId: 'R1', description: 'STAFF -> Internet (verbinding: new + established heen en terug)', from: 'STAFF', to: 'Internet', expect: 'allow' },
+      { id: 'i2', requirementId: 'R2', description: 'GUEST -> Internet (verbinding: new + established heen en terug)', from: 'GUEST', to: 'Internet', expect: 'allow' },
       { id: 'i3', requirementId: 'R3', description: 'GUEST -> STAFF (new)', from: 'GUEST', to: 'STAFF', expect: 'drop' },
-      { id: 'i4', requirementId: 'R4', description: 'STAFF -> GUEST (new + reply)', from: 'STAFF', to: 'GUEST', expect: 'allow' }
+      { id: 'i4', requirementId: 'R4', description: 'STAFF -> GUEST (verbinding: new + established heen en terug)', from: 'STAFF', to: 'GUEST', expect: 'allow' }
     ]
   }
 ];

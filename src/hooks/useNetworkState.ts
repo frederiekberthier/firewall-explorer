@@ -3,6 +3,7 @@ import { NetworkNode, Connection, FirewallRule, Phase, SimulationPacket, Firewal
 import { Scenario } from '@/types/scenario';
 import { nextVlanId, vlanAddressing, nextHostIp } from '@/lib/addressing';
 import { layoutVlanRow, hostOffset } from '@/lib/layout';
+import { nextNodeName } from '@/lib/nodeNames';
 
 const ROUTER_ID = 'router-main';
 
@@ -87,7 +88,7 @@ export function useNetworkState() {
       const newNode: NetworkNode = {
         id: newId,
         type,
-        name: `${type.charAt(0).toUpperCase() + type.slice(1)} ${prev.filter(n => n.type === type).length + 1}`,
+        name: nextNodeName(prev, type),
         x,
         y,
         parentId: resolvedParentId,
@@ -212,7 +213,7 @@ export function useNetworkState() {
 
     if (scenario.topology.internet) {
       const internetId = generateId();
-      newNodes.push({ id: internetId, type: 'internet', name: 'Internet', x: 400, y: 80, parentId: ROUTER_ID });
+      newNodes.push({ id: internetId, type: 'internet', name: 'Internet', x: 400, y: 80, parentId: ROUTER_ID, scenarioRef: 'Internet' });
       newConnections.push({ id: `conn-${internetId}`, fromId: ROUTER_ID, toId: internetId });
     }
 
@@ -227,6 +228,7 @@ export function useNetworkState() {
         id: vlanNodeId,
         type: 'vlan',
         name: vlanDef.name,
+        scenarioRef: vlanDef.name,
         x: vlanXs[vlanIndex],
         y: 500,
         parentId: ROUTER_ID,
@@ -246,6 +248,7 @@ export function useNetworkState() {
           id: hostId,
           type: 'host',
           name: hostName,
+          scenarioRef: hostName,
           x: vlanNode.x + offset,
           y: vlanNode.y + 150,
           parentId: vlanNodeId,

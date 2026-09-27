@@ -5,6 +5,7 @@ import { ConnectionLine } from './ConnectionLine';
 import { Button } from '@/components/ui/button';
 import { ZoomIn, ZoomOut, RotateCcw, Move, Maximize } from 'lucide-react';
 import { fitView, MIN_ZOOM, MAX_ZOOM } from '@/lib/layout';
+import { validateNodeName } from '@/lib/nodeNames';
 
 interface NetworkCanvasProps {
   nodes: NetworkNode[];
@@ -251,6 +252,7 @@ export function NetworkCanvas({
             onSelect={() => onSelectNode(node.id)}
             onUpdate={(updates) => onUpdateNode(node.id, updates)}
             onDelete={() => onDeleteNode(node.id)}
+            validateName={(name) => validateNodeName(nodes, node.id, name)}
             onDragStart={(e) => handleDragStart(node.id, e)}
             isEditable={isEditable}
           />

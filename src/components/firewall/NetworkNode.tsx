@@ -1,4 +1,4 @@
-import { memo, useState, useRef, useEffect } from 'react';
+import { memo, useState, useRef, useEffect, useId } from 'react';
 import { NetworkNode as NetworkNodeType } from '@/types/firewall';
 import { Globe, Router, Network, Monitor, Trash2, Pencil, Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -12,6 +12,8 @@ interface NetworkNodeProps {
   onDelete: () => void;
   onDragStart: (e: React.PointerEvent) => void;
   isEditable: boolean;
+  /** Error message for a proposed name, or null when it may be used. */
+  validateName?: (name: string) => string | null;
 }
 
 const nodeIcons = {
@@ -35,12 +37,21 @@ export const NetworkNodeComponent = memo(function NetworkNodeComponent({
   onUpdate,
   onDelete,
   onDragStart,
-  isEditable
+  isEditable,
+  validateName
 }: NetworkNodeProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(node.name);
   const inputRef = useRef<HTMLInputElement>(null);
+  const errorId = useId();
   const Icon = nodeIcons[node.type];
+  const nameError = isEditing ? validateName?.(editName) ?? null : null;
+
+  // Follow the real name while not editing (it can change elsewhere, e.g.
+  // when a scenario is loaded or the network is reset).
+  useEffect(() => {
+    if (!isEditing) setEditName(node.name);
+  }, [node.name, isEditing]);
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -50,6 +61,7 @@ export const NetworkNodeComponent = memo(function NetworkNodeComponent({
   }, [isEditing]);
 
   const handleSave = () => {
+    if (nameError) return;
     onUpdate({ name: editName.trim() || node.name });
     setIsEditing(false);
   };
@@ -114,24 +126,33 @@ export const NetworkNodeComponent = memo(function NetworkNodeComponent({
       </div>
 
       {isEditing ? (
-        <div className="flex items-center gap-1 bg-card rounded-lg p-1 shadow-lg border border-border">
-          <Input
-            ref={inputRef}
-            value={editName}
-            onChange={(e) => setEditName(e.target.value)}
-            className="h-6 w-24 text-xs px-2"
-            aria-label="Nieuwe naam"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSave();
-              if (e.key === 'Escape') handleCancel();
-            }}
-          />
-          <button onClick={handleSave} aria-label="Naam opslaan" title="Opslaan" className="p-1 hover:bg-muted rounded">
-            <Check className="w-3 h-3 text-primary" />
-          </button>
-          <button onClick={handleCancel} aria-label="Hernoemen annuleren" title="Annuleren" className="p-1 hover:bg-muted rounded">
-            <X className="w-3 h-3 text-destructive" />
-          </button>
+        <div className="flex flex-col items-center gap-1">
+          <div className="flex items-center gap-1 bg-card rounded-lg p-1 shadow-lg border border-border">
+            <Input
+              ref={inputRef}
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              className="h-6 w-24 text-xs px-2"
+              aria-label="Nieuwe naam"
+              aria-invalid={nameError ? true : undefined}
+              aria-describedby={nameError ? errorId : undefined}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSave();
+                if (e.key === 'Escape') handleCancel();
+              }}
+            />
+            <button onClick={handleSave} disabled={!!nameError} aria-label="Naam opslaan" title="Opslaan" className="p-1 hover:bg-muted rounded disabled:opacity-40">
+              <Check className="w-3 h-3 text-primary" />
+            </button>
+            <button onClick={handleCancel} aria-label="Hernoemen annuleren" title="Annuleren" className="p-1 hover:bg-muted rounded">
+              <X className="w-3 h-3 text-destructive" />
+            </button>
+          </div>
+          {nameError && (
+            <p id={errorId} role="alert" className="max-w-[12rem] text-center text-[11px] leading-tight text-destructive bg-card/95 px-2 py-1 rounded border border-destructive/30">
+              {nameError}
+            </p>
+          )}
         </div>
       ) : (
         <div className="flex flex-col items-center gap-0.5">

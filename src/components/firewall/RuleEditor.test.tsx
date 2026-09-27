@@ -1,9 +1,16 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { useEffect } from 'react';
 import { RuleEditor } from './RuleEditor';
 import { useNetworkState } from '@/hooks/useNetworkState';
+
+// Radix Select relies on a few browser APIs jsdom does not implement.
+beforeAll(() => {
+  Element.prototype.hasPointerCapture ??= () => false;
+  Element.prototype.releasePointerCapture ??= () => {};
+  Element.prototype.scrollIntoView ??= () => {};
+});
 
 // Real state hook, so moving a rule goes through the actual reorderRules.
 function Harness() {
@@ -70,6 +77,14 @@ describe('RuleEditor rule reordering without drag-and-drop', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Regel 2 omhoog verplaatsen' }));
     expect(ruleActions()).toEqual(['allow', 'drop']);
+  });
+
+  it('offers "Alles (ANY)" as source and as destination', () => {
+    for (const label of ['Bron', 'Doel']) {
+      fireEvent.keyDown(screen.getByLabelText(label), { key: 'Enter' });
+      expect(screen.getByRole('option', { name: 'Alles (ANY)' })).toBeInTheDocument();
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    }
   });
 
   it('associates the form labels with their controls', () => {

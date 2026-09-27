@@ -41,7 +41,8 @@ const WAN_LIST = 'WAN';
  * How rule endpoints are exported, mirroring matchesWildcard() in
  * firewallEngine.ts:
  * - ANY          -> no restriction (e.g. the classic global
- *                   "accept established,related" rule)
+ *                   "accept established,related" rule); as destination it
+ *                   is exported for both chain input and chain forward
  * - ANY_VLAN     -> address-list with every VLAN subnet
  * - ANY_HOST     -> address-list with every host IP
  * - Internet / ANY_INTERNET -> the WAN interface list (in-/out-interface-list),
@@ -145,27 +146,34 @@ export function buildMikrotikConfig({
       // input), everything else is regular inter-VLAN/host traffic
       // (chain forward) — this is the vast majority of rules, and the
       // only chain anyone needs to think about unless they deliberately
-      // pick the router as a destination.
-      const chain = destNode?.type === 'router' ? 'input' : 'forward';
+      // pick the router as a destination. ANY as destination also covers
+      // the router in the simulator, so it becomes one rule per chain — the
+      // same pair the MikroTik default config uses for established,related.
+      const chains = rule.destinationId === 'ANY'
+        ? ['input', 'forward']
+        : [destNode?.type === 'router' ? 'input' : 'forward'];
       const srcParam = endpointParam(rule.sourceId, 'src');
-      // chain=input already means "traffic to the router" — no destination
-      // restriction is needed (or meaningful) there.
-      const dstParam = chain === 'input' ? '' : endpointParam(rule.destinationId, 'dst');
       const connectionState = rule.connectionStates.join(',');
       const action = rule.action === 'allow' ? 'accept' : rule.action === 'reject' ? 'reject' : 'drop';
 
-      const comment = `Rule ${index + 1}: ${source} -> ${destination} (${connectionState})`;
+      return chains.map(chain => {
+        // chain=input already means "traffic to the router" — no destination
+        // restriction is needed (or meaningful) there.
+        const dstParam = chain === 'input' ? '' : endpointParam(rule.destinationId, 'dst');
+        const chainNote = chains.length > 1 ? ` [${chain}]` : '';
+        const comment = `Rule ${index + 1}: ${source} -> ${destination} (${connectionState})${chainNote}`;
 
-      const params = [
-        `chain=${chain}`,
-        srcParam,
-        dstParam,
-        `connection-state=${connectionState}`,
-        `action=${action}`,
-        `comment="${escapeRouterOsString(comment)}"`
-      ].filter(Boolean).join(' ');
+        const params = [
+          `chain=${chain}`,
+          srcParam,
+          dstParam,
+          `connection-state=${connectionState}`,
+          `action=${action}`,
+          `comment="${escapeRouterOsString(comment)}"`
+        ].filter(Boolean).join(' ');
 
-      return `/ip firewall filter add ${params}`;
+        return `/ip firewall filter add ${params}`;
+      }).join('\n');
     })
     .join('\n');
 

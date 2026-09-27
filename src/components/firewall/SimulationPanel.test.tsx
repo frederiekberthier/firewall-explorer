@@ -32,7 +32,7 @@ const choose = (label: string, option: string) => {
 };
 
 async function simulate(rules: FirewallRule[]) {
-  render(
+  const view = render(
     <SimulationPanel
       nodes={nodes}
       rules={rules}
@@ -50,6 +50,7 @@ async function simulate(rules: FirewallRule[]) {
   for (let i = 0; i < 20; i++) {
     await act(async () => { vi.advanceTimersByTime(1500); });
   }
+  return view;
 }
 
 describe('SimulationPanel connection stages', () => {
@@ -125,6 +126,56 @@ describe('SimulationPanel timers and cleanup', () => {
 
     expect(onSimulationChange).toHaveBeenCalledWith(null);
     expect(onActiveRuleChange).toHaveBeenCalledWith(null);
+  });
+});
+
+describe('SimulationPanel connection table', () => {
+  const tableRows = () => screen.getAllByRole('row').slice(1); // skip header row
+  const runAgain = async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Simulatie resetten' }));
+    fireEvent.click(screen.getByRole('button', { name: /Start simulatie/ }));
+    for (let i = 0; i < 20; i++) {
+      await act(async () => { vi.advanceTimersByTime(1500); });
+    }
+  };
+  const working = [
+    rule({ connectionStates: ['new', 'established'] }),
+    rule({ id: 'r2', sourceId: 'inet', destinationId: 'data', connectionStates: ['established', 'related'], order: 1 })
+  ];
+
+  it('marks a connection whose reply was blocked as such, not as established', async () => {
+    await simulate([rule({})]);
+    expect(tableRows()).toHaveLength(1);
+    expect(tableRows()[0]).toHaveTextContent('antwoord geblokkeerd');
+  });
+
+  it('shows the connection table lookup in the reply evaluation', async () => {
+    await simulate(working);
+    expect(screen.getAllByText(/Connectietabel: verbinding DATA → Internet gevonden/)).toHaveLength(2); // reply + follow-up
+    expect(tableRows()[0]).toHaveTextContent('established');
+  });
+
+  it('keeps one row per connection when the same test runs again', async () => {
+    await simulate(working);
+    await runAgain();
+    await runAgain();
+    expect(tableRows()).toHaveLength(1);
+  });
+
+  it('can be cleared with the button', async () => {
+    await simulate(working);
+    fireEvent.click(screen.getByRole('button', { name: 'Tabel leegmaken' }));
+    expect(screen.queryByText('Connectietabel')).not.toBeInTheDocument();
+  });
+
+  it('is cleared when the rules change', async () => {
+    const view = await simulate(working);
+    expect(screen.getByText('Connectietabel')).toBeInTheDocument();
+
+    view.rerender(
+      <SimulationPanel nodes={nodes} rules={[rule({})]} firewallPolicy="block-all" simulation={null} onSimulationChange={() => {}} />
+    );
+    expect(screen.queryByText('Connectietabel')).not.toBeInTheDocument();
   });
 });
 

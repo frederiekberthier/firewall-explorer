@@ -65,10 +65,18 @@ export function uniqueSlug(base: string, existingIds: string[]): string {
 }
 
 /** All node names an intent's bron/doel dropdown can offer: Internet (if enabled) + every VLAN/host name. */
+/**
+ * The one place where the wizard normalises a VLAN/host name. The draft keeps
+ * what was typed (so typing "DATA 2" is not disturbed by trimming halfway);
+ * everything that leaves the draft — the dropdown values, the checks and the
+ * built scenario — goes through this, so intents and topology always agree.
+ */
+export const cleanName = (name: string) => name.trim();
+
 export function availableNodeNames(draft: WizardDraft): string[] {
   return [
     ...(draft.internet ? ['Internet'] : []),
-    ...draft.vlans.flatMap(v => [v.name, ...v.hosts])
+    ...draft.vlans.flatMap(v => [v.name, ...v.hosts]).map(cleanName).filter(Boolean)
   ];
 }
 
@@ -93,7 +101,7 @@ export function intentEndpointOptions(draft: WizardDraft): IntentEndpointOption[
 
 /** Every name used in the topology, lowercased, for duplicate/reserved-name checks (excludes 'Internet' itself). */
 export function topologyNamesLowerCase(draft: WizardDraft): string[] {
-  return draft.vlans.flatMap(v => [v.name, ...v.hosts]).map(n => n.trim().toLowerCase());
+  return draft.vlans.flatMap(v => [v.name, ...v.hosts]).map(n => cleanName(n).toLowerCase());
 }
 
 /** Duplicate (case-insensitive) or reserved VLAN/host names — surfaced as a validation message. */
@@ -102,7 +110,7 @@ export function findTopologyNameIssues(vlans: WizardVlan[]): string[] {
   const issues: string[] = [];
 
   vlans.flatMap(v => [v.name, ...v.hosts]).forEach(rawName => {
-    const name = rawName.trim();
+    const name = cleanName(rawName);
     if (!name) return;
     const lower = name.toLowerCase();
     if (RESERVED_NODE_NAMES.includes(lower)) {
@@ -164,9 +172,9 @@ export function buildScenarioFromDraft(draft: WizardDraft): Scenario {
       return {
         id: `i${i + 1}`,
         requirementId: requirements[i].id,
-        description: describeIntent(choice.from, choice.to, choice.expect, state),
-        from: choice.from,
-        to: choice.to,
+        description: describeIntent(cleanName(choice.from), cleanName(choice.to), choice.expect, state),
+        from: cleanName(choice.from),
+        to: cleanName(choice.to),
         expect: choice.expect,
         state
       };
@@ -178,7 +186,7 @@ export function buildScenarioFromDraft(draft: WizardDraft): Scenario {
     brief: { markdown: draft.markdown.trim(), requirements },
     topology: {
       internet: draft.internet,
-      vlans: draft.vlans.map(v => ({ name: v.name.trim(), hosts: v.hosts }))
+      vlans: draft.vlans.map(v => ({ name: cleanName(v.name), hosts: v.hosts.map(cleanName) }))
     },
     intents
   };

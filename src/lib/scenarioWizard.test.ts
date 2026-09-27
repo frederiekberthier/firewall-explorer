@@ -1,4 +1,8 @@
+// @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { useNetworkState } from '@/hooks/useNetworkState';
+import { gradeScenario } from './scenarioGrading';
 import {
   slugify,
   uniqueSlug,
@@ -232,3 +236,36 @@ describe('buildScenarioFromDraft', () => {
     expect(scenario.intents![0].requirementId).toBe('R1');
   });
 });
+
+describe('wizard names with surrounding whitespace', () => {
+  const draftWithSpaces = (): WizardDraft => ({
+    title: 'Spaties',
+    markdown: 'Test',
+    difficulty: 'basis',
+    requirements: [{ key: 'k1', text: 'DATA mag naar internet' }],
+    internet: true,
+    vlans: [{ name: 'DATA ', hosts: [' PC 1 '] }],
+    intentChoices: { k1: { from: 'DATA ', to: 'Internet', expect: 'drop', state: 'new' } }
+  });
+
+  it('offers trimmed names in the intent dropdowns', () => {
+    expect(availableNodeNames(draftWithSpaces())).toEqual(['Internet', 'DATA', 'PC 1']);
+  });
+
+  it('builds a scenario whose intents match the (trimmed) topology names', () => {
+    const scenario = buildScenarioFromDraft(draftWithSpaces());
+    expect(scenario.topology.vlans).toEqual([{ name: 'DATA', hosts: ['PC 1'] }]);
+    expect(scenario.intents![0]).toMatchObject({ from: 'DATA', to: 'Internet' });
+  });
+
+  it('lets the self-test find the elements after loading the scenario', () => {
+    const scenario = buildScenarioFromDraft(draftWithSpaces());
+    const { result } = renderHook(() => useNetworkState());
+    act(() => { result.current.loadScenario(scenario); });
+
+    const report = gradeScenario(scenario, result.current.nodes, [], 'block-all');
+    expect(report.intentResults[0].reason).not.toContain('niet terugvinden');
+    expect(report.intentResults[0].pass).toBe(true); // drop intent, block-all, no rules
+  });
+});
+

@@ -1,7 +1,9 @@
-import { useRef, useCallback, useState, useEffect } from 'react';
+import { useRef, useCallback, useState, useEffect, useMemo } from 'react';
 import { NetworkNode, Connection, SimulationPacket } from '@/types/firewall';
 import { NetworkNodeComponent } from './NetworkNode';
 import { ConnectionLine } from './ConnectionLine';
+import { PacketMarker } from './PacketMarker';
+import { pathBetween, connectionIdsOnPath } from '@/lib/topology';
 import { Button } from '@/components/ui/button';
 import { ZoomIn, ZoomOut, RotateCcw, Move, Maximize } from 'lucide-react';
 import { fitView, MIN_ZOOM, MAX_ZOOM } from '@/lib/layout';
@@ -16,7 +18,6 @@ interface NetworkCanvasProps {
   onDeleteNode: (id: string) => void;
   isEditable: boolean;
   packet?: SimulationPacket;
-  activeConnectionIds?: string[];
 }
 
 export function NetworkCanvas({
@@ -27,13 +28,16 @@ export function NetworkCanvas({
   onUpdateNode,
   onDeleteNode,
   isEditable,
-  packet,
-  activeConnectionIds = []
+  packet
 }: NetworkCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
+  // Whether the pointer actually moved while panning: the click that ends a
+  // pan must not deselect the selected node (isPanning is already false by
+  // the time that click fires).
+  const pannedRef = useRef(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [dragState, setDragState] = useState<{
     nodeId: string;
@@ -95,6 +99,7 @@ export function NetworkCanvas({
     if (isPanning) {
       const dx = e.clientX - panStart.x;
       const dy = e.clientY - panStart.y;
+      if (Math.abs(dx) + Math.abs(dy) > 2) pannedRef.current = true;
       setPan(prev => ({ x: prev.x + dx, y: prev.y + dy }));
       setPanStart({ x: e.clientX, y: e.clientY });
       return;
@@ -125,6 +130,7 @@ export function NetworkCanvas({
     // (and the canvas root) explicitly is what the tagName check above was
     // trying, and failing, to detect.
     const target = e.target as HTMLElement;
+    pannedRef.current = false;
     if (target.dataset.panSurface === 'true') {
       setIsPanning(true);
       setPanStart({ x: e.clientX, y: e.clientY });
@@ -132,6 +138,15 @@ export function NetworkCanvas({
   }, []);
 
   const getNodeById = (id: string) => nodes.find(n => n.id === id);
+
+  // The route of the packet being simulated: from its source up through the
+  // parents to the router and down to its destination, in the direction it
+  // travels (a reply goes back). Only these links are highlighted.
+  const packetPath = useMemo(
+    () => (packet ? pathBetween(nodes, packet.sourceId, packet.destinationId) : []),
+    [packet, nodes]
+  );
+  const activeConnectionIds = useMemo(() => connectionIdsOnPath(packetPath, connections), [packetPath, connections]);
 
   return (
     <div
@@ -142,7 +157,10 @@ export function NetworkCanvas({
       // page instead. A touch pointer is implicitly captured by the element it
       // started on, so its move/up events still bubble up to this handler.
       className={`relative w-full h-[60vh] min-h-[360px] md:h-[700px] touch-none bg-gradient-to-br from-background to-muted/30 rounded-xl border border-border overflow-hidden ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
-      onClick={() => !isPanning && onSelectNode(null)}
+      onClick={() => {
+        if (!pannedRef.current) onSelectNode(null);
+        pannedRef.current = false;
+      }}
       onPointerDown={handleCanvasPointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -236,11 +254,19 @@ export function NetworkCanvas({
                 key={conn.id}
                 from={fromNode}
                 to={toNode}
-                packet={packet}
                 isActive={activeConnectionIds.includes(conn.id)}
               />
             );
           })}
+
+          {/* The packet itself; a new packet (new id per stage) restarts the trip */}
+          {packet && packetPath.length > 1 && (
+            <PacketMarker
+              key={packet.id}
+              points={packetPath.map(n => ({ x: n.x, y: n.y }))}
+              color={packet.status === 'dropped' ? 'hsl(var(--destructive))' : 'hsl(var(--primary))'}
+            />
+          )}
         </svg>
 
         {/* Nodes */}

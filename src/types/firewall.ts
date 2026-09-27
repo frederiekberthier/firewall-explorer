@@ -55,7 +55,6 @@ export interface SimulationPacket {
   id: string;
   sourceId: string;
   destinationId: string;
-  progress: number;
   direction: 'request' | 'reply';
   status: 'traveling' | 'checking' | 'allowed' | 'dropped';
   activeRuleId?: string;

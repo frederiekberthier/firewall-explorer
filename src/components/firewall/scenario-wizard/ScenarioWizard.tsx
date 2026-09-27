@@ -5,6 +5,7 @@ import {
   createEmptyDraft,
   buildScenarioFromDraft,
   availableNodeNames,
+  requirementsWithStaleChoices,
   findTopologyNameIssues
 } from '@/lib/scenarioWizard';
 import { WizardStepBrief } from './WizardStepBrief';
@@ -57,14 +58,16 @@ export function ScenarioWizard({ onLoadScenario, onCancel }: ScenarioWizardProps
     };
   }, [draft]);
 
+  const staleRequirements = useMemo(() => requirementsWithStaleChoices(draft), [draft]);
+
   const canCommit = useMemo(() => {
     const filled = draft.requirements.filter(r => r.text.trim() !== '');
     if (filled.length === 0 || availableNodeNames(draft).length < 2) return false;
     return filled.every(r => {
       const choice = draft.intentChoices[r.key];
       return !!choice?.from && !!choice?.to;
-    });
-  }, [draft]);
+    }) && staleRequirements.length === 0;
+  }, [draft, staleRequirements]);
 
   const goNext = () => {
     if (!canAdvanceFrom[step]) return;
@@ -141,7 +144,13 @@ export function ScenarioWizard({ onLoadScenario, onCancel }: ScenarioWizardProps
             <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
         ) : (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {staleRequirements.length > 0 && (
+              <p className="text-xs text-orange-600 max-w-xs">
+                {staleRequirements.length === 1 ? 'Eén vereiste verwijst' : `${staleRequirements.length} vereisten verwijzen`} naar
+                een element dat niet meer in de topologie staat — kies bron/doel opnieuw.
+              </p>
+            )}
             <Button variant="outline" onClick={handleDownload} disabled={!canCommit}>
               <Download className="w-4 h-4 mr-2" />
               Downloaden als JSON

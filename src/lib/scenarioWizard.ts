@@ -99,6 +99,25 @@ export function intentEndpointOptions(draft: WizardDraft): IntentEndpointOption[
   return options;
 }
 
+/**
+ * Bron/doel of a requirement's choice that no longer exist in the topology —
+ * e.g. a VLAN renamed or removed, or "internettoegang" unticked, after step
+ * 4 was filled in. Such an intent could never be resolved, so the wizard
+ * flags it instead of silently producing a requirement that always fails.
+ */
+export function staleIntentEndpoints(draft: WizardDraft, choice: WizardIntentChoice | undefined): string[] {
+  if (!choice) return [];
+  const values = new Set(intentEndpointOptions(draft).map(o => o.value));
+  return [choice.from, choice.to].filter(v => v !== '' && !values.has(cleanName(v)));
+}
+
+/** Keys of the filled-in requirements whose choice points at something that no longer exists. */
+export function requirementsWithStaleChoices(draft: WizardDraft): string[] {
+  return draft.requirements
+    .filter(r => r.text.trim() !== '' && staleIntentEndpoints(draft, draft.intentChoices[r.key]).length > 0)
+    .map(r => r.key);
+}
+
 /** Every name used in the topology, lowercased, for duplicate/reserved-name checks (excludes 'Internet' itself). */
 export function topologyNamesLowerCase(draft: WizardDraft): string[] {
   return draft.vlans.flatMap(v => [v.name, ...v.hosts]).map(n => cleanName(n).toLowerCase());

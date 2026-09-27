@@ -1,4 +1,4 @@
-import { WizardDraft, WizardIntentChoice, IntentEndpointOption, intentEndpointOptions } from '@/lib/scenarioWizard';
+import { WizardDraft, WizardIntentChoice, IntentEndpointOption, intentEndpointOptions, staleIntentEndpoints } from '@/lib/scenarioWizard';
 import {
   Select,
   SelectContent,
@@ -11,6 +11,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { AlertTriangle, Info } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface WizardStepIntentsReviewProps {
   draft: WizardDraft;
@@ -99,9 +100,27 @@ export function WizardStepIntentsReview({ draft, onChange }: WizardStepIntentsRe
           <div className="space-y-3">
             {filledRequirements.map((req, index) => {
               const choice = draft.intentChoices[req.key];
+              const stale = staleIntentEndpoints(draft, choice);
+              // A stale value is shown as empty, so the placeholder asks for a new pick.
+              const shown = (v: string | undefined) => (v && !stale.includes(v) ? v : '');
               return (
-                <div key={req.key} className="p-3 rounded-lg border border-border space-y-2">
+                <div
+                  key={req.key}
+                  className={cn(
+                    "p-3 rounded-lg border space-y-2",
+                    stale.length > 0 ? "border-orange-500/50 bg-orange-500/5" : "border-border"
+                  )}
+                >
                   <p className="text-xs text-muted-foreground">R{index + 1}: {req.text}</p>
+                  {stale.length > 0 && (
+                    <p className="flex items-start gap-1.5 text-xs text-orange-600">
+                      <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                      <span>
+                        {stale.map(v => `"${v}"`).join(' en ')} {stale.length === 1 ? 'bestaat' : 'bestaan'} niet meer in
+                        de topologie (hernoemd of verwijderd in stap 3) — kies opnieuw.
+                      </span>
+                    </p>
+                  )}
                   <div className="flex flex-wrap items-center gap-2 text-sm">
                     <Select
                       value={choice?.state ?? 'new'}
@@ -120,7 +139,7 @@ export function WizardStepIntentsReview({ draft, onChange }: WizardStepIntentsRe
 
                     <EndpointSelect
                       options={options}
-                      value={choice?.from ?? ''}
+                      value={shown(choice?.from)}
                       onValueChange={(v) => setChoice(req.key, { from: v })}
                       placeholder="Bron..."
                     />
@@ -150,7 +169,7 @@ export function WizardStepIntentsReview({ draft, onChange }: WizardStepIntentsRe
                           ? options
                           : options.filter(o => o.value !== choice?.from)
                       }
-                      value={choice?.to ?? ''}
+                      value={shown(choice?.to)}
                       onValueChange={(v) => setChoice(req.key, { to: v })}
                       placeholder="Doel..."
                     />

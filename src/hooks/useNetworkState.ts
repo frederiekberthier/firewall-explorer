@@ -7,6 +7,17 @@ import { nextNodeName } from '@/lib/nodeNames';
 
 const ROUTER_ID = 'router-main';
 
+/** Unique id: Date.now() alone collides when two items are added in the same millisecond. */
+const makeId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+
+/**
+ * Rules sorted by `order` and renumbered 0..n-1. Every change to the rule
+ * list goes through this, so order values stay unique and gap-free and the
+ * array order always equals the evaluation order the student sees.
+ */
+const renumber = (rules: FirewallRule[]) =>
+  [...rules].sort((a, b) => a.order - b.order).map((r, idx) => ({ ...r, order: idx }));
+
 const initialNodes: NetworkNode[] = [
   { id: ROUTER_ID, type: 'router', name: 'Router', x: 400, y: 300, parentId: null }
 ];
@@ -22,7 +33,7 @@ export function useNetworkState() {
   const [activeScenario, setActiveScenario] = useState<Scenario | null>(null);
   const [addressLists, setAddressLists] = useState<AddressList[]>([]);
 
-  const generateId = () => `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const generateId = () => makeId('node');
 
   const addNode = useCallback((type: 'internet' | 'vlan' | 'host') => {
     const newId = generateId();
@@ -103,7 +114,7 @@ export function useNetworkState() {
 
     setConnections(prev => {
       if (!parentId) return prev;
-      return [...prev, { id: `conn-${Date.now()}`, fromId: parentId, toId: newId }];
+      return [...prev, { id: makeId('conn'), fromId: parentId, toId: newId }];
     });
   }, [selectedNodeId]);
 
@@ -131,21 +142,29 @@ export function useNetworkState() {
     setConnections(prev => prev.filter(c =>
       !nodesToDelete.has(c.fromId) && !nodesToDelete.has(c.toId)
     ));
-    setRules(prev => prev.filter(r =>
-      !nodesToDelete.has(r.sourceId) && !nodesToDelete.has(r.destinationId)
-    ));
-    setAddressLists(prev => prev.map(list => ({
-      ...list,
-      memberIds: list.memberIds.filter(id => !nodesToDelete.has(id))
-    })));
+    // An address list whose members are all deleted would match nothing, so
+    // the rules using it would silently never apply: remove the list and
+    // those rules too, just like rules that use a deleted node directly.
+    const emptiedListIds = new Set(addressLists
+      .filter(list => list.memberIds.length > 0 && list.memberIds.every(m => nodesToDelete.has(m)))
+      .map(list => list.id));
+    const isGone = (id: string) => nodesToDelete.has(id) || emptiedListIds.has(id);
+
+    setRules(prev => renumber(prev.filter(r => !isGone(r.sourceId) && !isGone(r.destinationId))));
+    setAddressLists(prev => prev
+      .filter(list => !emptiedListIds.has(list.id))
+      .map(list => ({
+        ...list,
+        memberIds: list.memberIds.filter(id => !nodesToDelete.has(id))
+      })));
     if (selectedNodeId && nodesToDelete.has(selectedNodeId)) {
       setSelectedNodeId(null);
     }
-  }, [nodes, selectedNodeId]);
+  }, [nodes, selectedNodeId, addressLists]);
 
   const addAddressList = useCallback((name: string, memberIds: string[]) => {
     const newList: AddressList = {
-      id: `list-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      id: makeId('list'),
       name,
       memberIds
     };
@@ -159,31 +178,23 @@ export function useNetworkState() {
   const deleteAddressList = useCallback((id: string) => {
     setAddressLists(prev => prev.filter(list => list.id !== id));
     // A rule that referenced this list no longer has a valid source/destination.
-    setRules(prev => {
-      const filtered = prev.filter(r => r.sourceId !== id && r.destinationId !== id);
-      return filtered.map((r, idx) => ({ ...r, order: idx }));
-    });
+    setRules(prev => renumber(prev.filter(r => r.sourceId !== id && r.destinationId !== id)));
   }, []);
 
   const addRule = useCallback((rule: Omit<FirewallRule, 'id' | 'order'>) => {
-    const newRule: FirewallRule = {
-      ...rule,
-      id: `rule-${Date.now()}`,
-      order: rules.length
-    };
-    setRules(prev => [...prev, newRule]);
-  }, [rules.length]);
-
-  const deleteRule = useCallback((id: string) => {
-    setRules(prev => {
-      const filtered = prev.filter(r => r.id !== id);
-      return filtered.map((r, idx) => ({ ...r, order: idx }));
-    });
+    // Order is computed from the latest state inside the updater, not from a
+    // closure, so two adds before a re-render still get 0 and 1.
+    setRules(prev => renumber([...prev, { ...rule, id: makeId('rule'), order: prev.length }]));
   }, []);
 
+  const deleteRule = useCallback((id: string) => {
+    setRules(prev => renumber(prev.filter(r => r.id !== id)));
+  }, []);
+
+  // Indexes are positions in the list as shown (sorted by order).
   const reorderRules = useCallback((startIndex: number, endIndex: number) => {
     setRules(prev => {
-      const result = [...prev];
+      const result = renumber(prev);
       const [removed] = result.splice(startIndex, 1);
       result.splice(endIndex, 0, removed);
       return result.map((r, idx) => ({ ...r, order: idx }));

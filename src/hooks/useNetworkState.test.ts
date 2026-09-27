@@ -156,3 +156,60 @@ describe('useNetworkState node names', () => {
     expect(report.intentResults.every(r => !r.reason.includes('niet terugvinden'))).toBe(true);
   });
 });
+
+describe('useNetworkState rule order', () => {
+  const setup = () => {
+    const hook = renderHook(() => useNetworkState());
+    act(() => { hook.result.current.addNode('vlan'); });
+    act(() => { hook.result.current.addNode('vlan'); });
+    act(() => { hook.result.current.addNode('vlan'); });
+    return hook;
+  };
+  const vlanIds = (nodes: { id: string; type: string }[]) => nodes.filter(n => n.type === 'vlan').map(n => n.id);
+  const orders = (rules: { order: number }[]) => rules.map(r => r.order).sort((a, b) => a - b);
+
+  it('keeps rule order values unique after deleting a node that a rule used', () => {
+    const { result } = setup();
+    const [a, b, c] = vlanIds(result.current.nodes);
+    act(() => { result.current.addRule({ sourceId: a, destinationId: b, connectionStates: ['new'], action: 'allow' }); });
+    act(() => { result.current.addRule({ sourceId: b, destinationId: c, connectionStates: ['new'], action: 'allow' }); });
+    act(() => { result.current.addRule({ sourceId: c, destinationId: b, connectionStates: ['new'], action: 'drop' }); });
+
+    act(() => { result.current.deleteNode(a); }); // removes the rule with order 0
+    act(() => { result.current.addRule({ sourceId: b, destinationId: c, connectionStates: ['established'], action: 'allow' }); });
+
+    expect(orders(result.current.rules)).toEqual([0, 1, 2]);
+    // The new rule comes last, as the student sees it.
+    const last = [...result.current.rules].sort((x, y) => x.order - y.order)[2];
+    expect(last.connectionStates).toEqual(['established']);
+  });
+
+  it('gives two rules added in the same tick distinct ids and order values', () => {
+    const { result } = setup();
+    const [a, b] = vlanIds(result.current.nodes);
+    act(() => {
+      result.current.addRule({ sourceId: a, destinationId: b, connectionStates: ['new'], action: 'allow' });
+      result.current.addRule({ sourceId: b, destinationId: a, connectionStates: ['new'], action: 'allow' });
+    });
+
+    expect(new Set(result.current.rules.map(r => r.id)).size).toBe(2);
+    expect(orders(result.current.rules)).toEqual([0, 1]);
+  });
+
+  it('removes an address list that became empty, together with the rules that used it', () => {
+    const { result } = setup();
+    const [a, b] = vlanIds(result.current.nodes);
+    act(() => { result.current.addAddressList('alleen-a', [a]); });
+    const listId = result.current.addressLists[0].id;
+    act(() => { result.current.addRule({ sourceId: listId, destinationId: b, connectionStates: ['new'], action: 'allow' }); });
+    act(() => { result.current.addRule({ sourceId: b, destinationId: listId, connectionStates: ['new'], action: 'drop' }); });
+    act(() => { result.current.addRule({ sourceId: b, destinationId: 'ANY_VLAN', connectionStates: ['new'], action: 'allow' }); });
+
+    act(() => { result.current.deleteNode(a); });
+
+    expect(result.current.addressLists).toHaveLength(0);
+    expect(result.current.rules).toHaveLength(1);
+    expect(result.current.rules[0]).toMatchObject({ destinationId: 'ANY_VLAN', order: 0 });
+  });
+});
+

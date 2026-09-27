@@ -9,7 +9,7 @@ const draft: WizardDraft = {
   requirements: [{ key: 'k1', text: 'DATA mag naar internet' }, { key: 'k2', text: 'SEC mag naar internet' }],
   internet: true,
   // "DATA" was renamed to "KANTOOR" in step 3 after step 4 was filled in.
-  vlans: [{ name: 'KANTOOR', hosts: [] }, { name: 'SEC', hosts: [] }],
+  vlans: [{ key: 'v1', name: 'KANTOOR', hosts: [] }, { key: 'v2', name: 'SEC', hosts: [] }],
   intentChoices: {
     k1: { from: 'DATA', to: 'Internet', expect: 'allow', state: 'new' },
     k2: { from: 'SEC', to: 'Internet', expect: 'allow', state: 'new' }

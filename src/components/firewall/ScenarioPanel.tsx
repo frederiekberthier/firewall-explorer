@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Dispatch, SetStateAction } from 'react';
 import { Scenario } from '@/types/scenario';
 import { SCENARIOS } from '@/data/scenarios';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { BookOpen, Circle, FolderOpen, X, ClipboardPaste, Wand2, ChevronDown } from 'lucide-react';
 import { ScenarioWizard } from './scenario-wizard/ScenarioWizard';
+import { WizardSession, createWizardSession, isDraftStarted } from '@/lib/scenarioWizard';
 
 interface ScenarioPanelProps {
   activeScenario: Scenario | null;
@@ -38,11 +39,19 @@ function isValidScenario(value: unknown): value is Scenario {
 
 type PickerMode = 'list' | 'wizard';
 
-function ScenarioPicker({ onLoadScenario }: { onLoadScenario: (scenario: Scenario) => void }) {
+interface ScenarioPickerProps {
+  onLoadScenario: (scenario: Scenario) => void;
+  wizardSession: WizardSession;
+  onWizardSessionChange: Dispatch<SetStateAction<WizardSession>>;
+}
+
+function ScenarioPicker({ onLoadScenario, wizardSession, onWizardSessionChange }: ScenarioPickerProps) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<PickerMode>('list');
   const [pasted, setPasted] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  const draftStarted = isDraftStarted(wizardSession.draft);
 
   const handlePick = (scenario: Scenario) => {
     onLoadScenario(scenario);
@@ -83,7 +92,16 @@ function ScenarioPicker({ onLoadScenario }: { onLoadScenario: (scenario: Scenari
         </DialogHeader>
 
         {mode === 'wizard' ? (
-          <ScenarioWizard onLoadScenario={handlePick} onCancel={() => setMode('list')} />
+          <ScenarioWizard
+            session={wizardSession}
+            onSessionChange={onWizardSessionChange}
+            onLoadScenario={(scenario) => {
+              handlePick(scenario);
+              // Done: the next "Nieuw scenario opbouwen" starts from scratch.
+              onWizardSessionChange(createWizardSession());
+            }}
+            onCancel={() => setMode('list')}
+          />
         ) : (
           <>
             <div className="space-y-3">
@@ -107,10 +125,22 @@ function ScenarioPicker({ onLoadScenario }: { onLoadScenario: (scenario: Scenari
               </div>
             </div>
 
-            <Button onClick={() => setMode('wizard')} className="flex items-center gap-2">
-              <Wand2 className="w-4 h-4" />
-              Nieuw scenario opbouwen
-            </Button>
+            {draftStarted ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button onClick={() => setMode('wizard')} className="flex items-center gap-2">
+                  <Wand2 className="w-4 h-4" />
+                  Verder met je concept{wizardSession.draft.title.trim() ? `: ${wizardSession.draft.title.trim()}` : ''}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => onWizardSessionChange(createWizardSession())}>
+                  Concept verwijderen
+                </Button>
+              </div>
+            ) : (
+              <Button onClick={() => setMode('wizard')} className="flex items-center gap-2">
+                <Wand2 className="w-4 h-4" />
+                Nieuw scenario opbouwen
+              </Button>
+            )}
 
             <details className="pt-2 border-t border-border group">
               <summary className="text-sm font-medium flex items-center gap-2 cursor-pointer select-none list-none">
@@ -139,6 +169,18 @@ function ScenarioPicker({ onLoadScenario }: { onLoadScenario: (scenario: Scenari
 }
 
 export function ScenarioPanel({ activeScenario, onLoadScenario, onClearScenario }: ScenarioPanelProps) {
+  // Lives here (always mounted) rather than in the dialog or the picker: the
+  // picker is rendered in two places below and remounts when a scenario is
+  // loaded or cleared, which would otherwise lose a half-built draft too.
+  const [wizardSession, setWizardSession] = useState<WizardSession>(createWizardSession);
+  const picker = (
+    <ScenarioPicker
+      onLoadScenario={onLoadScenario}
+      wizardSession={wizardSession}
+      onWizardSessionChange={setWizardSession}
+    />
+  );
+
   if (!activeScenario) {
     return (
       <Card>
@@ -152,7 +194,7 @@ export function ScenarioPanel({ activeScenario, onLoadScenario, onClearScenario 
               </p>
             </div>
           </div>
-          <ScenarioPicker onLoadScenario={onLoadScenario} />
+          {picker}
         </CardContent>
       </Card>
     );
@@ -172,7 +214,7 @@ export function ScenarioPanel({ activeScenario, onLoadScenario, onClearScenario 
             )}
           </div>
           <div className="ml-auto flex flex-shrink-0 items-center gap-2">
-            <ScenarioPicker onLoadScenario={onLoadScenario} />
+            {picker}
             <Button variant="ghost" size="icon" onClick={onClearScenario} title="Scenario sluiten" aria-label="Scenario sluiten">
               <X className="w-4 h-4" />
             </Button>

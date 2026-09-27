@@ -9,6 +9,8 @@ export interface WizardRequirement {
 }
 
 export interface WizardVlan {
+  /** Stable id for React keys and per-VLAN UI state — not part of the scenario. */
+  key: string;
   name: string;
   hosts: string[];
 }
@@ -34,6 +36,44 @@ export interface WizardDraft {
 
 // Shared with the rest of the app, so the wizard and renaming on the canvas apply the same rules.
 export { RESERVED_NODE_NAMES };
+
+/**
+ * Unique key for wizard items. crypto.randomUUID() only exists in secure
+ * contexts (https or localhost), so opening the dev server via its LAN IP
+ * would otherwise throw when adding a requirement or VLAN.
+ */
+export function makeKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return `k-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export type WizardStep = 1 | 2 | 3 | 4;
+
+/**
+ * Everything the wizard needs to resume where it was: kept outside the
+ * dialog, so closing it (Esc, clicking outside, ✕) does not discard a
+ * half-built scenario.
+ */
+export interface WizardSession {
+  draft: WizardDraft;
+  step: WizardStep;
+  maxReachedStep: WizardStep;
+}
+
+export function createWizardSession(): WizardSession {
+  return { draft: createEmptyDraft(), step: 1, maxReachedStep: 1 };
+}
+
+/** Whether anything was entered yet — only then is there a draft worth resuming. */
+export function isDraftStarted(draft: WizardDraft): boolean {
+  return (
+    draft.title.trim() !== '' ||
+    draft.markdown.trim() !== '' ||
+    draft.requirements.some(r => r.text.trim() !== '') ||
+    draft.vlans.length > 0 ||
+    draft.internet
+  );
+}
 
 export function createEmptyDraft(): WizardDraft {
   return {

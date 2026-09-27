@@ -78,3 +78,53 @@ describe('SimulationPanel connection stages', () => {
     expect(screen.getByText(/Communicatie TOEGESTAAN/)).toBeInTheDocument();
   });
 });
+
+describe('SimulationPanel timers and cleanup', () => {
+  const renderPanel = (onSimulationChange = vi.fn(), onActiveRuleChange = vi.fn()) => {
+    const view = render(
+      <SimulationPanel
+        nodes={nodes}
+        rules={[rule({ connectionStates: ['new', 'established'] })]}
+        firewallPolicy="block-all"
+        simulation={null}
+        onSimulationChange={onSimulationChange}
+        onActiveRuleChange={onActiveRuleChange}
+      />
+    );
+    choose('Bron', 'DATA');
+    choose('Doel', 'Internet');
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole('button', { name: /Start simulatie/ }));
+    return { ...view, onSimulationChange, onActiveRuleChange };
+  };
+
+  it('stays idle when reset is clicked while the first packet is still travelling', async () => {
+    renderPanel();
+    await act(async () => { vi.advanceTimersByTime(500); });
+    fireEvent.click(screen.getByRole('button', { name: 'Simulatie resetten' }));
+
+    for (let i = 0; i < 10; i++) {
+      await act(async () => { vi.advanceTimersByTime(1500); });
+    }
+    expect(screen.queryByText(/Firewall regel evaluatie/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Start simulatie/ })).toBeEnabled();
+  });
+
+  it('cannot start a second, overlapping run', () => {
+    renderPanel();
+    expect(screen.getByRole('button', { name: /Start simulatie/ })).toBeDisabled();
+  });
+
+  it('clears the packet and the highlighted rule when the panel unmounts mid-simulation', async () => {
+    const { unmount, onSimulationChange, onActiveRuleChange } = renderPanel();
+    await act(async () => { vi.advanceTimersByTime(2000); });
+    onSimulationChange.mockClear();
+    onActiveRuleChange.mockClear();
+
+    unmount();
+
+    expect(onSimulationChange).toHaveBeenCalledWith(null);
+    expect(onActiveRuleChange).toHaveBeenCalledWith(null);
+  });
+});
+

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useId } from 'react';
+import { useState, useEffect, useCallback, useId, useRef } from 'react';
 import { NetworkNode, FirewallRule, SimulationPacket, FirewallPolicy, AddressList } from '@/types/firewall';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -141,6 +141,19 @@ export function SimulationPanel({
   const notifyActiveRule = useCallback((ruleId: string) => {
     onActiveRuleChange?.(SYNTHETIC_RULE_IDS.includes(ruleId) ? null : ruleId);
   }, [onActiveRuleChange]);
+
+  // Leaving phase 3 unmounts this panel mid-simulation: clear the packet on
+  // the canvas and the highlighted rule, which live outside this component
+  // (the timers below are cancelled by their own effect cleanups). Refs keep
+  // the latest callbacks without re-running this effect.
+  const onSimulationChangeRef = useRef(onSimulationChange);
+  const onActiveRuleChangeRef = useRef(onActiveRuleChange);
+  onSimulationChangeRef.current = onSimulationChange;
+  onActiveRuleChangeRef.current = onActiveRuleChange;
+  useEffect(() => () => {
+    onSimulationChangeRef.current(null);
+    onActiveRuleChangeRef.current?.(null);
+  }, []);
 
   // Packet travel animation; the cleanup cancels it when the simulation is
   // reset or restarted mid-way.

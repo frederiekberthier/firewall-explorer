@@ -1,3 +1,8 @@
+# Firewall Simulator — Apache-configuratie voor /firewall/
+# (wordt door Vite mee in dist/ gezet; upload dit bestand mee, het is verborgen)
+
+# Single-page app: elke URL die geen bestaand bestand of map is, gaat naar
+# index.html, zodat bv. /firewall/?s=<scenario> en de 404-pagina van de app werken.
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteBase /firewall/
@@ -5,4 +10,20 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule . /firewall/index.html [L]
+</IfModule>
+
+# Caching: alle .js/.css komen uit de build (assets/) en hebben een hash in
+# hun naam, dus veranderen nooit — lang cachen. favicon en logo hebben geen
+# hash: een week. index.html verwijst naar de gehashte namen en moet na elke
+# publicatie meteen vers zijn, anders blijven studenten de oude versie zien.
+<IfModule mod_headers.c>
+    <FilesMatch "\.(js|css)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
+    <FilesMatch "\.(png|ico)$">
+        Header set Cache-Control "public, max-age=604800"
+    </FilesMatch>
+    <FilesMatch "^(index\.html|robots\.txt)$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
 </IfModule>

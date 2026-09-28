@@ -12,12 +12,13 @@
     RewriteRule . /firewall/index.html [L]
 </IfModule>
 
-# Caching: alle .js/.css komen uit de build (assets/) en hebben een hash in
-# hun naam, dus veranderen nooit — lang cachen. favicon en logo hebben geen
-# hash: een week. index.html verwijst naar de gehashte namen en moet na elke
-# publicatie meteen vers zijn, anders blijven studenten de oude versie zien.
+# Caching: alle .js/.css en lettertypes (.woff2) komen uit de build (assets/)
+# en hebben een hash in hun naam, dus veranderen nooit — lang cachen. favicon
+# en logo hebben geen hash: een week. index.html verwijst naar de gehashte
+# namen en moet na elke publicatie meteen vers zijn, anders blijven studenten
+# de oude versie zien.
 <IfModule mod_headers.c>
-    <FilesMatch "\.(js|css)$">
+    <FilesMatch "\.(js|css|woff2)$">
         Header set Cache-Control "public, max-age=31536000, immutable"
     </FilesMatch>
     <FilesMatch "\.(png|ico)$">

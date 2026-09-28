@@ -280,7 +280,7 @@ export function lintRules(rules: FirewallRule[]): LintFinding[] {
       findings.push({
         id: `any-new-allow-${r.id}`,
         severity: 'warning',
-        message: 'Regel met bron "Alles (ANY)" laat nieuw verkeer toe — ook nieuwe verbindingen vanaf Internet. Beperk de bron (bv. ANY VLAN) als dat niet de bedoeling is.',
+        message: `Regel met bron "Alles (ANY)" laat nieuw verkeer toe — ook nieuwe verbindingen vanaf Internet. Beperk de bron (bv. met een adreslijst van je VLAN's) als dat niet de bedoeling is.`,
         ruleIds: [r.id]
       });
     });

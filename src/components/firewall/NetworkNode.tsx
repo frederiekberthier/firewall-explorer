@@ -25,7 +25,7 @@ const nodeIcons = {
 
 const nodeColors = {
   router: 'bg-primary text-primary-foreground',
-  internet: 'bg-secondary text-secondary-foreground',
+  internet: 'bg-bar text-bar-foreground',
   vlan: 'bg-accent text-accent-foreground border-2 border-primary/30',
   host: 'bg-card text-card-foreground border border-border'
 };
@@ -142,7 +142,7 @@ export const NetworkNodeComponent = memo(function NetworkNodeComponent({
               }}
             />
             <button onClick={handleSave} disabled={!!nameError} aria-label="Naam opslaan" title="Opslaan" className="p-1 hover:bg-muted rounded disabled:opacity-40">
-              <Check className="w-3 h-3 text-primary" />
+              <Check className="w-3 h-3 text-link" />
             </button>
             <button onClick={handleCancel} aria-label="Hernoemen annuleren" title="Annuleren" className="p-1 hover:bg-muted rounded">
               <X className="w-3 h-3 text-destructive" />

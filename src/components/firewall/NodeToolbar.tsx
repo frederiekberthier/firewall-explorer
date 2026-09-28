@@ -16,7 +16,7 @@ export function NodeToolbar({ onAddNode, selectedNodeType, selectedNodeName, dis
   const hasInternet = nodes.some(node => node.type === 'internet');
 
   return (
-    <div className="flex flex-wrap items-center gap-2 p-4 bg-card rounded-xl shadow-md border border-border">
+    <div className="flex flex-wrap items-center gap-2 p-4 bg-card rounded-lg shadow-soft border border-border">
       <span className="text-sm font-medium text-muted-foreground">
         Voeg nodes toe:
       </span>
@@ -58,7 +58,7 @@ export function NodeToolbar({ onAddNode, selectedNodeType, selectedNodeName, dis
           Host
         </Button>
         {canAddHost ? (
-          <span className="text-xs text-primary font-medium">
+          <span className="text-xs text-link font-semibold">
             → koppelen aan {selectedNodeName}
           </span>
         ) : (

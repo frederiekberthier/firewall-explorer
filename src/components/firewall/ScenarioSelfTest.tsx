@@ -24,7 +24,7 @@ function RequirementRow({ summary }: { summary: RequirementSummary }) {
         {status === 'untested' ? (
           <Circle className="w-4 h-4 mt-0.5 text-muted-foreground flex-shrink-0" aria-hidden="true" />
         ) : status === 'pass' ? (
-          <CheckCircle2 className="w-4 h-4 mt-0.5 text-primary flex-shrink-0" aria-hidden="true" />
+          <CheckCircle2 className="w-4 h-4 mt-0.5 text-success flex-shrink-0" aria-hidden="true" />
         ) : (
           <XCircle className="w-4 h-4 mt-0.5 text-destructive flex-shrink-0" aria-hidden="true" />
         )}
@@ -83,7 +83,7 @@ export function ScenarioSelfTest({ scenario, nodes, rules, firewallPolicy, addre
   return (
     <div
       className={cn(
-        'rounded-xl border-2 p-4 space-y-3 transition-colors',
+        'rounded-lg border-2 p-4 space-y-3 transition-colors shadow-soft',
         tested.length === 0
           ? 'border-border bg-card' // nothing can be checked automatically: neutral, not "failing"
           : allPass ? 'border-primary/40 bg-primary/5' : 'border-destructive/30 bg-destructive/5'

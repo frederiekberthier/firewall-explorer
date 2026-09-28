@@ -5,10 +5,11 @@ import { NetworkCanvas } from './NetworkCanvas';
 import { NodeToolbar } from './NodeToolbar';
 import { RuleEditor } from './RuleEditor';
 import { SimulationPanel } from './SimulationPanel';
-import { PhaseNavigation } from './PhaseNavigation';
+import { PhaseTabs, PhaseStepButtons } from './PhaseNavigation';
+import { PHASES } from '@/lib/phases';
 import { ScenarioPanel } from './ScenarioPanel';
 import { Button } from '@/components/ui/button';
-import { RotateCcw, HelpCircle, Mail, MapPin, Phone, ExternalLink } from 'lucide-react';
+import { RotateCcw, Mail, MapPin, Phone, ExternalLink } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -72,47 +73,44 @@ export function FirewallSimulator() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card sticky top-0 z-10">
-        <div className="flex items-center justify-between gap-3 px-4 md:px-6 py-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Logo" className="h-9 w-9" />
-            <div>
-              <h1 className="text-lg md:text-xl font-bold text-foreground">
-                Firewall Simulator
-              </h1>
-              <p className="hidden sm:block text-xs text-muted-foreground">
-                Leer hoe stateful firewall regels werken
-              </p>
-            </div>
+    <div className="min-h-screen flex flex-col bg-background">
+      {/* Header: dark bar with the wordmark, the phases as tabs and Reset — the
+          same header as the other Graduaat IoT apps. */}
+      <header className="sticky top-0 z-20 bg-bar text-bar-foreground">
+        <div className="container flex flex-wrap items-center justify-between gap-x-6">
+          <div className="flex items-baseline gap-1 py-2.5 font-heading text-2xl font-extrabold tracking-tight">
+            <span className="text-primary" aria-hidden="true">/</span>firewall
+            <span className="ml-2 hidden font-sans text-xs font-normal text-bar-muted sm:inline">Graduaat IoT</span>
           </div>
 
-          <Button variant="outline" size="sm" onClick={() => { resetNetwork(); setActiveRuleId(null); }}>
-            <RotateCcw className="w-4 h-4 mr-2" />
+          <div className="order-last -mx-5 w-[calc(100%+2.5rem)] border-t border-white/10 px-1 md:order-none md:mx-0 md:ml-auto md:w-auto md:border-0 md:px-0">
+            <PhaseTabs currentPhase={phase} onPhaseChange={setPhase} canProceed={canProceed} />
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { resetNetwork(); setActiveRuleId(null); }}
+            className="text-bar-foreground hover:bg-primary hover:text-primary-foreground"
+          >
+            <RotateCcw className="w-4 h-4" />
             Reset
           </Button>
         </div>
       </header>
 
-      <div className="flex flex-col md:flex-row">
-        {/* Phase navigation: a horizontal bar on small screens, a sticky sidebar from md up */}
-        <aside className="border-b md:border-b-0 md:border-r border-border bg-card/50 p-3 md:p-6 md:w-64 md:flex-shrink-0 md:sticky md:top-[65px] md:h-[calc(100vh-65px)]">
-          <PhaseNavigation
-            currentPhase={phase}
-            onPhaseChange={setPhase}
-            canProceed={canProceed}
-          />
-        </aside>
-
-        <main className="flex-1 min-w-0 container px-4 md:px-8 py-6 space-y-6">
-          {/* Phase description */}
-          <div className="flex items-start gap-3 p-4 bg-card rounded-xl border border-border">
-            <HelpCircle className="w-5 h-5 text-primary mt-0.5" />
-            <p className="text-sm text-foreground">
-              {phaseDescriptions[phase]}
+      <main className="flex-1 w-full container pt-8 pb-12 space-y-6">
+        {/* Page title per phase, with the step buttons */}
+        <section className="flex flex-wrap items-end justify-between gap-4">
+          <div className="min-w-0">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-link">
+              Fase {phase} van 3 · Firewall Simulator
             </p>
+            <h1 className="text-[clamp(1.75rem,1.3rem+2vw,2.5rem)]">{PHASES[phase - 1].title}</h1>
+            <p className="mt-2 max-w-[65ch] text-muted-foreground">{phaseDescriptions[phase]}</p>
           </div>
+          <PhaseStepButtons currentPhase={phase} onPhaseChange={setPhase} canProceed={canProceed} />
+        </section>
 
           <ScenarioPanel
             activeScenario={activeScenario}
@@ -189,7 +187,7 @@ export function FirewallSimulator() {
                 />
 
                 {/* Show current rules for reference */}
-                <div className="p-4 bg-card rounded-xl border border-border">
+                <div className="p-4 bg-card rounded-lg border border-border shadow-soft">
                   <h4 className="font-medium mb-3">Actieve regels:</h4>
                   {rules.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Geen regels gedefinieerd</p>
@@ -215,7 +213,7 @@ export function FirewallSimulator() {
                               <span className="text-muted-foreground">→</span>
                               <span>{getNodeName(nodes, rule.destinationId, addressLists)}</span>
                               <span className="text-muted-foreground">({rule.connectionStates.join(',')})</span>
-                              <span className={rule.action === 'allow' ? 'text-primary' : 'text-destructive'}>
+                              <span className={rule.action === 'allow' ? 'text-success font-semibold' : 'text-destructive font-semibold'}>
                                 {rule.action.toUpperCase()}
                               </span>
                               {isUnreached && (
@@ -241,57 +239,44 @@ export function FirewallSimulator() {
               />
             </div>
           )}
-        </main>
-      </div>
+      </main>
 
       {/* Footer */}
-      <footer className="border-t border-border bg-card/80 backdrop-blur-sm">
-        <div className="px-4 md:px-6 py-4">
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div>
-                <h3 className="text-sm font-semibold text-foreground mb-1">
-                  Graduaat Internet of Things
-                </h3>
-                <p className="text-xs text-muted-foreground mb-2">
-                  Howest Hogeschool West-Vlaanderen - Campus Kortrijk
-                </p>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  <div className="flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5" />
-                    <span>Sint-Martenslatemlaan 2B, 8500 Kortrijk</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Phone className="w-3.5 h-3.5" />
-                    <span>+32 56 24 12 90</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5" />
-                    <a href="mailto:iot@howest.be" className="hover:text-primary transition-colors">
-                      iot@howest.be
-                    </a>
-                  </div>
-                </div>
-              </div>
-
-              <a
-                href="https://www.howest.be/nl/opleidingen/graduaat/internet-of-things"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-xs text-primary hover:underline whitespace-nowrap"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                Meer info over de opleiding
-              </a>
-            </div>
-
-            <div className="border-t border-border/50 pt-3">
-              <p className="text-xs text-muted-foreground text-center">
-                © {new Date().getFullYear()} Howest - Hogeschool West-Vlaanderen
-              </p>
+      <footer className="bg-bar px-5 pb-4 pt-6 text-sm text-bar-muted">
+        <div className="container flex flex-wrap items-center justify-between gap-4 px-0">
+          <div>
+            <h3 className="mb-1 text-base text-bar-foreground">Graduaat Internet of Things</h3>
+            <p className="mb-2">Howest Hogeschool West-Vlaanderen - Campus Kortrijk</p>
+            <div className="flex flex-wrap gap-x-5 gap-y-1">
+              <span className="inline-flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                Sint-Martenslatemlaan 2B, 8500 Kortrijk
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Phone className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                +32 56 24 12 90
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Mail className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                <a href="mailto:iot@howest.be" className="text-inherit no-underline hover:text-primary">iot@howest.be</a>
+              </span>
             </div>
           </div>
+
+          <a
+            href="https://www.howest.be/nl/opleidingen/graduaat/internet-of-things"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-full border-2 border-primary px-4 font-heading font-extrabold text-bar-foreground no-underline transition-colors hover:bg-primary hover:text-primary-foreground"
+          >
+            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+            Meer info over de opleiding
+          </a>
         </div>
+
+        <p className="container mt-4 border-t border-white/10 px-0 pt-4 text-center">
+          © {new Date().getFullYear()} Howest - Hogeschool West-Vlaanderen
+        </p>
       </footer>
     </div>
   );

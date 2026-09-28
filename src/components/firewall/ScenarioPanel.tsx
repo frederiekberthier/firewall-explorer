@@ -15,26 +15,15 @@ import {
 import { BookOpen, Circle, FolderOpen, X, ClipboardPaste, Wand2, ChevronDown } from 'lucide-react';
 import { ScenarioWizard } from './scenario-wizard/ScenarioWizard';
 import { WizardSession, createWizardSession, isDraftStarted } from '@/lib/scenarioWizard';
+import { validateScenario } from '@/lib/scenarioValidation';
+
+// Enough to point at the problem without flooding the dialog.
+const MAX_ERRORS_SHOWN = 8;
 
 interface ScenarioPanelProps {
   activeScenario: Scenario | null;
   onLoadScenario: (scenario: Scenario) => void;
   onClearScenario: () => void;
-}
-
-function isValidScenario(value: unknown): value is Scenario {
-  if (!value || typeof value !== 'object') return false;
-  const s = value as Partial<Scenario>;
-  if (!s.meta?.id || !s.meta?.title) return false;
-  if (!s.brief || !Array.isArray(s.brief.requirements)) return false;
-  if (!s.topology || !Array.isArray(s.topology.vlans)) return false;
-  // Every vlan's `hosts`, if present, must actually be an array — a string
-  // or object there would otherwise crash loadScenario's .forEach later.
-  if (s.topology.vlans.some(v => v.hosts !== undefined && !Array.isArray(v.hosts))) return false;
-  // `intents` is optional, but if present must be an array — gradeScenario
-  // otherwise crashes trying to .map over it.
-  if (s.intents !== undefined && !Array.isArray(s.intents)) return false;
-  return true;
 }
 
 type PickerMode = 'list' | 'wizard';
@@ -49,7 +38,7 @@ function ScenarioPicker({ onLoadScenario, wizardSession, onWizardSessionChange }
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<PickerMode>('list');
   const [pasted, setPasted] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<string[]>([]);
 
   const draftStarted = isDraftStarted(wizardSession.draft);
 
@@ -64,18 +53,21 @@ function ScenarioPicker({ onLoadScenario, wizardSession, onWizardSessionChange }
   };
 
   const handleLoadPasted = () => {
+    let parsed: unknown;
     try {
-      const parsed = JSON.parse(pasted);
-      if (!isValidScenario(parsed)) {
-        setError('Dit lijkt geen geldig scenario-bestand (meta.id, meta.title, brief.requirements en topology.vlans zijn verplicht).');
-        return;
-      }
-      setError(null);
-      handlePick(parsed);
-      setPasted('');
-    } catch {
-      setError('Kon de tekst niet als JSON inlezen.');
+      parsed = JSON.parse(pasted);
+    } catch (e) {
+      setErrors([`Dit is geen geldige JSON: ${e instanceof Error ? e.message : 'onbekende fout'}`]);
+      return;
     }
+    const result = validateScenario(parsed);
+    if (!result.ok) {
+      setErrors(result.errors);
+      return;
+    }
+    setErrors([]);
+    handlePick(result.scenario);
+    setPasted('');
   };
 
   return (
@@ -151,11 +143,21 @@ function ScenarioPicker({ onLoadScenario, wizardSession, onWizardSessionChange }
               <div className="space-y-2 mt-2">
                 <Textarea
                   value={pasted}
-                  onChange={(e) => { setPasted(e.target.value); setError(null); }}
+                  onChange={(e) => { setPasted(e.target.value); setErrors([]); }}
                   placeholder='{"meta": {"id": "...", "title": "..."}, "brief": {...}, "topology": {...}}'
                   className="font-mono text-xs h-32"
                 />
-                {error && <p className="text-xs text-destructive">{error}</p>}
+                {errors.length > 0 && (
+                  <div role="alert" className="text-xs text-destructive space-y-1">
+                    <p className="font-medium">Dit scenario kan niet geladen worden:</p>
+                    <ul className="list-disc pl-4 space-y-0.5 font-mono">
+                      {errors.slice(0, MAX_ERRORS_SHOWN).map((e, i) => <li key={i}>{e}</li>)}
+                    </ul>
+                    {errors.length > MAX_ERRORS_SHOWN && (
+                      <p>… en nog {errors.length - MAX_ERRORS_SHOWN} andere.</p>
+                    )}
+                  </div>
+                )}
                 <Button size="sm" onClick={handleLoadPasted} disabled={!pasted.trim()}>
                   Scenario inladen
                 </Button>

@@ -164,16 +164,16 @@ export function RuleEditor({
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-popover border border-border">
-              <SelectItem value="block-all">
-                <div className="flex items-center gap-2">
-                  <ShieldX className="w-4 h-4 text-destructive" />
-                  <span>Block All (Default Deny) - Veiliger</span>
-                </div>
-              </SelectItem>
               <SelectItem value="allow-all">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-green-600" />
                   <span>Allow All (Default Allow) - Minder veilig</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="block-all">
+                <div className="flex items-center gap-2">
+                  <ShieldX className="w-4 h-4 text-destructive" />
+                  <span>Block All (Default Deny) - Veiliger</span>
                 </div>
               </SelectItem>
             </SelectContent>

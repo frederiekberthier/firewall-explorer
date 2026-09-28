@@ -7,6 +7,14 @@ import { nextNodeName } from '@/lib/nodeNames';
 
 const ROUTER_ID = 'router-main';
 
+/**
+ * Default policy at start, after "Reset" and when a scenario is loaded.
+ * Allow All matches what a MikroTik does (a filter chain accepts whatever no
+ * rule drops), which is what students configure in the lab. Block All stays
+ * available in the rule editor.
+ */
+export const DEFAULT_FIREWALL_POLICY: FirewallPolicy = 'allow-all';
+
 /** Unique id: Date.now() alone collides when two items are added in the same millisecond. */
 const makeId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
@@ -27,7 +35,7 @@ export function useNetworkState() {
   const [nodes, setNodes] = useState<NetworkNode[]>(initialNodes);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [firewallPolicy, setFirewallPolicy] = useState<FirewallPolicy>('block-all');
+  const [firewallPolicy, setFirewallPolicy] = useState<FirewallPolicy>(DEFAULT_FIREWALL_POLICY);
   const [rules, setRules] = useState<FirewallRule[]>([]);
   const [simulation, setSimulation] = useState<SimulationPacket | null>(null);
   const [activeScenario, setActiveScenario] = useState<Scenario | null>(null);
@@ -205,7 +213,7 @@ export function useNetworkState() {
     setNodes(initialNodes);
     setConnections([]);
     setSelectedNodeId(null);
-    setFirewallPolicy('block-all');
+    setFirewallPolicy(DEFAULT_FIREWALL_POLICY);
     setRules([]);
     setSimulation(null);
     setPhase(1);
@@ -272,7 +280,7 @@ export function useNetworkState() {
     setNodes(newNodes);
     setConnections(newConnections);
     setSelectedNodeId(null);
-    setFirewallPolicy('block-all');
+    setFirewallPolicy(DEFAULT_FIREWALL_POLICY);
     setRules([]);
     setSimulation(null);
     setActiveScenario(scenario);

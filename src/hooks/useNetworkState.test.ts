@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useNetworkState } from './useNetworkState';
+import { useNetworkState, DEFAULT_FIREWALL_POLICY } from './useNetworkState';
 import { findScenario } from '@/data/scenarios';
 
 // By id, not by position: new scenarios can be added anywhere in the catalogue.
@@ -215,3 +215,20 @@ describe('useNetworkState rule order', () => {
     expect(result.current.rules[0]).toMatchObject({ destinationId: 'ANY_VLAN', order: 0 });
   });
 });
+
+describe('useNetworkState default policy', () => {
+  it('starts, resets and loads scenarios with Allow All, like a MikroTik', () => {
+    expect(DEFAULT_FIREWALL_POLICY).toBe('allow-all');
+    const { result } = renderHook(() => useNetworkState());
+    expect(result.current.firewallPolicy).toBe('allow-all');
+
+    act(() => { result.current.setFirewallPolicy('block-all'); });
+    act(() => { result.current.loadScenario(KANTOOR); });
+    expect(result.current.firewallPolicy).toBe('allow-all');
+
+    act(() => { result.current.setFirewallPolicy('block-all'); });
+    act(() => { result.current.resetNetwork(); });
+    expect(result.current.firewallPolicy).toBe('allow-all');
+  });
+});
+

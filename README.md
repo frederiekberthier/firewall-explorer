@@ -100,6 +100,35 @@ npm run build      # output in dist/
 
 Gebouwd met Vite, React, TypeScript, Tailwind CSS en shadcn/ui.
 
+## Publiceren
+
+De app is een statische site onder het pad `/firewall/` (ingesteld via `base`
+in `vite.config.ts`). Zo zet je een nieuwe versie online:
+
+1. Bouw vanaf een schone `main`:
+
+   ```bash
+   git switch main && git pull
+   npm ci
+   npm run typecheck && npm run lint && npm test
+   npm run build
+   ```
+
+2. Upload de **inhoud** van `dist/` naar de map `/firewall/` op de webserver,
+   inclusief het verborgen bestand `.htaccess` (sommige FTP-programma's tonen
+   dat niet standaard).
+3. Verwijder oude bestanden uit `/firewall/assets/`: de nieuwe build gebruikt
+   andere bestandsnamen.
+4. Controleer na het uploaden:
+   - `https://www.graduaatiot.be/firewall/` laadt, met het tab-icoon;
+   - een link zoals `/firewall/?s=h5-1-kantoor-sec` laadt een scenario;
+   - `/firewall/bestaat-niet` toont de Nederlandse 404-pagina van de app.
+
+`.htaccess` (uit `public/`) stuurt alle andere URL's naar `index.html` en zorgt
+dat `index.html` na elke publicatie meteen vers is, terwijl de gehashte
+bestanden in `assets/` lang in de cache blijven. Draait de server zonder Apache
+(`mod_rewrite`/`mod_headers`), dan moet die configuratie daar ingesteld worden.
+
 ## Meedoen
 
 Suggesties voor nieuwe oefenscenario's zijn het meest welkom. Een goed scenario

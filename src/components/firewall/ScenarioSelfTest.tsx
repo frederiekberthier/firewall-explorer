@@ -17,7 +17,7 @@ interface ScenarioSelfTestProps {
 const STATUS_LABEL = { pass: 'voldaan', fail: 'niet voldaan', untested: 'niet automatisch getest' } as const;
 
 function RequirementRow({ summary }: { summary: RequirementSummary }) {
-  const { requirement, status, results, failing } = summary;
+  const { requirement, status, results, failing, skipped } = summary;
   return (
     <li className="space-y-0.5" data-status={status}>
       <div className="flex items-start gap-2 text-sm">
@@ -39,6 +39,9 @@ function RequirementRow({ summary }: { summary: RequirementSummary }) {
           )}
         </span>
       </div>
+      {status === 'untested' && skipped.map(result => (
+        <p key={result.intent.id} className="text-xs text-muted-foreground italic pl-6">{result.reason}</p>
+      ))}
       {/* Every failing check, not just the first one, each with its own reason. */}
       {failing.map(result => (
         <p key={result.intent.id} className="text-xs text-muted-foreground pl-6">

@@ -79,12 +79,16 @@ describe('RuleEditor rule reordering without drag-and-drop', () => {
     expect(ruleActions()).toEqual(['allow', 'drop']);
   });
 
-  it('offers "Alles (ANY)" as source and as destination', () => {
+  it('offers one "Alles (ANY)" option (no separate ANY VLAN) and uses it as the default, like an empty MikroTik field', () => {
     for (const label of ['Bron', 'Doel']) {
+      // Default value, shown without opening the list.
+      expect(screen.getByLabelText(label)).toHaveTextContent('Alles (ANY)');
       fireEvent.keyDown(screen.getByLabelText(label), { key: 'Enter' });
       expect(screen.getByRole('option', { name: 'Alles (ANY)' })).toBeInTheDocument();
+      expect(screen.queryByRole('option', { name: /ANY VLAN/ })).not.toBeInTheDocument();
       fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
     }
+    expect(screen.getByText(/leeg laten/)).toBeInTheDocument();
   });
 
   it('associates the form labels with their controls', () => {

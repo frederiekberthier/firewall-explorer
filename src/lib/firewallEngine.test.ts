@@ -252,3 +252,33 @@ describe('evaluateConnection', () => {
     expect(result.reply![0].ruleId).toBe('output-chain');
   });
 });
+
+describe('ANY behaves like an empty field in MikroTik', () => {
+  const inet: NetworkNode = { id: 'inet', type: 'internet', name: 'Internet', x: 0, y: 0, parentId: 'router' };
+  const all = [...nodes, inet];
+  const verdict = (rules: FirewallRule[], sourceId: string, destinationId: string, isReply = false) => {
+    const r = checkRules({ nodes: all, rules, firewallPolicy: 'allow-all', sourceId, destinationId, isReply });
+    return r[r.length - 1];
+  };
+
+  it('ANY as source matches every sender: VLANs, hosts and Internet', () => {
+    const rules = [rule({ sourceId: 'ANY', destinationId: vlan2.id, action: 'drop' })];
+    for (const src of [vlan1.id, host1.id, inet.id]) {
+      expect(verdict(rules, src, vlan2.id)).toMatchObject({ ruleId: 'r1', action: 'drop' });
+    }
+  });
+
+  it('ANY as destination matches every receiver, including the router itself', () => {
+    const rules = [rule({ sourceId: vlan1.id, destinationId: 'ANY', action: 'drop' })];
+    for (const dst of [vlan2.id, host2.id, inet.id, router.id]) {
+      expect(verdict(rules, vlan1.id, dst)).toMatchObject({ ruleId: 'r1', action: 'drop' });
+    }
+  });
+
+  it('ANY -> ANY matches any packet in any direction', () => {
+    const rules = [rule({ sourceId: 'ANY', destinationId: 'ANY', connectionStates: ['established'], action: 'drop' })];
+    expect(verdict(rules, inet.id, host1.id, true)).toMatchObject({ ruleId: 'r1' });
+    expect(verdict(rules, host2.id, vlan1.id, true)).toMatchObject({ ruleId: 'r1' });
+  });
+});
+

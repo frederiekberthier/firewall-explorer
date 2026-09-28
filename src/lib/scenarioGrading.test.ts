@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { runIntent, lintRules, gradeScenario, summarizeRequirements } from './scenarioGrading';
 import { NetworkNode, FirewallRule } from '@/types/firewall';
-import { SCENARIOS } from '@/data/scenarios';
+import { findScenario } from '@/data/scenarios';
+
+// By id, not by position: new scenarios can be added anywhere in the catalogue.
+const KANTOOR = findScenario('h5-1-kantoor-sec')!;
 import { Scenario } from '@/types/scenario';
 
 const router: NetworkNode = { id: 'router', type: 'router', name: 'Router', x: 0, y: 0, parentId: null };
@@ -25,7 +28,7 @@ function rule(overrides: Partial<FirewallRule>): FirewallRule {
 
 describe('runIntent', () => {
   it('passes an allow intent only when request, reply and follow-up packets all succeed', () => {
-    const intent = SCENARIOS[0].intents!.find(i => i.id === 'i1')!; // DATA -> Internet, expect allow
+    const intent = KANTOOR.intents!.find(i => i.id === 'i1')!; // DATA -> Internet, expect allow
     const newRule = rule({ id: 'r1', order: 0 }); // DATA -> Internet (new)
 
     // Only a 'new' rule, no established/related -> the reply is dropped, so it must fail
@@ -49,7 +52,7 @@ describe('runIntent', () => {
   });
 
   it('passes an allow intent with one global established,related rule (ANY -> ANY)', () => {
-    const intent = SCENARIOS[0].intents!.find(i => i.id === 'i1')!; // DATA -> Internet, expect allow
+    const intent = KANTOOR.intents!.find(i => i.id === 'i1')!; // DATA -> Internet, expect allow
     const rules: FirewallRule[] = [
       rule({ id: 'r0', sourceId: 'ANY', destinationId: 'ANY', connectionStates: ['established', 'related'], order: 0 }),
       rule({ id: 'r1', order: 1 })
@@ -58,12 +61,12 @@ describe('runIntent', () => {
   });
 
   it('passes a drop intent when the default policy already blocks it', () => {
-    const intent = SCENARIOS[0].intents!.find(i => i.id === 'i3')!; // DATA -> SEC, expect drop
+    const intent = KANTOOR.intents!.find(i => i.id === 'i3')!; // DATA -> SEC, expect drop
     expect(runIntent(intent, nodes, [], 'block-all').pass).toBe(true);
   });
 
   it('fails a drop intent when a rule wrongly allows it', () => {
-    const intent = SCENARIOS[0].intents!.find(i => i.id === 'i3')!; // DATA -> SEC, expect drop
+    const intent = KANTOOR.intents!.find(i => i.id === 'i3')!; // DATA -> SEC, expect drop
     const rules: FirewallRule[] = [rule({ id: 'r1', destinationId: sec.id, order: 0 })];
     expect(runIntent(intent, nodes, rules, 'block-all').pass).toBe(false);
   });
@@ -177,7 +180,7 @@ describe('runIntent with an explicit state', () => {
 
 describe('gradeScenario', () => {
   it('reports all intents and lint findings together', () => {
-    const report = gradeScenario(SCENARIOS[0], nodes, [], 'block-all');
+    const report = gradeScenario(KANTOOR, nodes, [], 'block-all');
     expect(report.intentResults).toHaveLength(4);
     // R1 (DATA -> Internet, expect allow) fails: block-all with no rules at all
     expect(report.intentResults.find(r => r.intent.id === 'i1')?.pass).toBe(false);
@@ -211,7 +214,7 @@ describe('lintRules and the "Alles (ANY)" option', () => {
   });
 
   it('lets one global established rule plus a new rule satisfy a whole connection', () => {
-    const intent = SCENARIOS[0].intents!.find(i => i.id === 'i1')!; // DATA -> Internet, expect allow
+    const intent = KANTOOR.intents!.find(i => i.id === 'i1')!; // DATA -> Internet, expect allow
     const rules = [{ ...globalEstablished, order: 0 }, rule({ id: 'r1', order: 1 })];
     expect(runIntent(intent, nodes, rules, 'block-all').pass).toBe(true);
   });

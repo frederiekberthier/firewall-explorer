@@ -1,15 +1,18 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useNetworkState } from './useNetworkState';
-import { SCENARIOS } from '@/data/scenarios';
+import { useNetworkState, DEFAULT_FIREWALL_POLICY } from './useNetworkState';
+import { findScenario } from '@/data/scenarios';
+
+// By id, not by position: new scenarios can be added anywhere in the catalogue.
+const KANTOOR = findScenario('h5-1-kantoor-sec')!;
 import { HOST_SPACING } from '@/lib/layout';
 import { gradeScenario } from '@/lib/scenarioGrading';
 
 describe('useNetworkState.loadScenario', () => {
   it('builds a topology with real addressing from a scenario', () => {
     const { result } = renderHook(() => useNetworkState());
-    const scenario = SCENARIOS[0];
+    const scenario = KANTOOR;
 
     act(() => {
       result.current.loadScenario(scenario);
@@ -36,7 +39,7 @@ describe('useNetworkState.loadScenario', () => {
 
   it('clears the active scenario without touching the network on clearScenario', () => {
     const { result } = renderHook(() => useNetworkState());
-    act(() => { result.current.loadScenario(SCENARIOS[0]); });
+    act(() => { result.current.loadScenario(KANTOOR); });
     const nodesBefore = result.current.nodes;
 
     act(() => { result.current.clearScenario(); });
@@ -47,7 +50,7 @@ describe('useNetworkState.loadScenario', () => {
 
   it('resetNetwork also clears the active scenario', () => {
     const { result } = renderHook(() => useNetworkState());
-    act(() => { result.current.loadScenario(SCENARIOS[0]); });
+    act(() => { result.current.loadScenario(KANTOOR); });
     act(() => { result.current.resetNetwork(); });
 
     expect(result.current.activeScenario).toBeNull();
@@ -61,7 +64,7 @@ describe('useNetworkState.loadScenario', () => {
       hosts: [`PC ${i}a`, `PC ${i}b`, `PC ${i}c`]
     }));
     act(() => {
-      result.current.loadScenario({ ...SCENARIOS[0], topology: { ...SCENARIOS[0].topology, vlans } });
+      result.current.loadScenario({ ...KANTOOR, topology: { ...KANTOOR.topology, vlans } });
     });
 
     const router = result.current.nodes.find(n => n.type === 'router')!;
@@ -79,7 +82,7 @@ describe('useNetworkState.loadScenario', () => {
 describe('useNetworkState.addressLists', () => {
   it('creates an address list with the given members', () => {
     const { result } = renderHook(() => useNetworkState());
-    act(() => { result.current.loadScenario(SCENARIOS[0]); });
+    act(() => { result.current.loadScenario(KANTOOR); });
     const vlanIds = result.current.nodes.filter(n => n.type === 'vlan').map(n => n.id);
 
     act(() => { result.current.addAddressList('trusted', vlanIds); });
@@ -90,7 +93,7 @@ describe('useNetworkState.addressLists', () => {
 
   it('removes a node from any address list it belongs to when that node is deleted', () => {
     const { result } = renderHook(() => useNetworkState());
-    act(() => { result.current.loadScenario(SCENARIOS[0]); });
+    act(() => { result.current.loadScenario(KANTOOR); });
     const [vlanA, vlanB] = result.current.nodes.filter(n => n.type === 'vlan');
 
     act(() => { result.current.addAddressList('both-vlans', [vlanA.id, vlanB.id]); });
@@ -101,7 +104,7 @@ describe('useNetworkState.addressLists', () => {
 
   it('deleting an address list also removes rules that referenced it', () => {
     const { result } = renderHook(() => useNetworkState());
-    act(() => { result.current.loadScenario(SCENARIOS[0]); });
+    act(() => { result.current.loadScenario(KANTOOR); });
     const [vlanA, vlanB] = result.current.nodes.filter(n => n.type === 'vlan');
 
     act(() => { result.current.addAddressList('list', [vlanA.id]); });
@@ -119,7 +122,7 @@ describe('useNetworkState.addressLists', () => {
 
   it('resetNetwork also clears address lists', () => {
     const { result } = renderHook(() => useNetworkState());
-    act(() => { result.current.loadScenario(SCENARIOS[0]); });
+    act(() => { result.current.loadScenario(KANTOOR); });
     const vlanIds = result.current.nodes.filter(n => n.type === 'vlan').map(n => n.id);
     act(() => { result.current.addAddressList('trusted', vlanIds); });
 
@@ -146,13 +149,13 @@ describe('useNetworkState node names', () => {
 
   it('keeps scenario requirements resolvable after renaming a scenario node', () => {
     const { result } = renderHook(() => useNetworkState());
-    act(() => { result.current.loadScenario(SCENARIOS[0]); });
+    act(() => { result.current.loadScenario(KANTOOR); });
     const data = result.current.nodes.find(n => n.name === 'DATA')!;
     expect(data.scenarioRef).toBe('DATA');
 
     act(() => { result.current.updateNode(data.id, { name: 'Kantoor' }); });
 
-    const report = gradeScenario(SCENARIOS[0], result.current.nodes, [], 'block-all');
+    const report = gradeScenario(KANTOOR, result.current.nodes, [], 'block-all');
     expect(report.intentResults.every(r => !r.reason.includes('niet terugvinden'))).toBe(true);
   });
 });
@@ -210,6 +213,22 @@ describe('useNetworkState rule order', () => {
     expect(result.current.addressLists).toHaveLength(0);
     expect(result.current.rules).toHaveLength(1);
     expect(result.current.rules[0]).toMatchObject({ destinationId: 'ANY_VLAN', order: 0 });
+  });
+});
+
+describe('useNetworkState default policy', () => {
+  it('starts, resets and loads scenarios with Allow All, like a MikroTik', () => {
+    expect(DEFAULT_FIREWALL_POLICY).toBe('allow-all');
+    const { result } = renderHook(() => useNetworkState());
+    expect(result.current.firewallPolicy).toBe('allow-all');
+
+    act(() => { result.current.setFirewallPolicy('block-all'); });
+    act(() => { result.current.loadScenario(KANTOOR); });
+    expect(result.current.firewallPolicy).toBe('allow-all');
+
+    act(() => { result.current.setFirewallPolicy('block-all'); });
+    act(() => { result.current.resetNetwork(); });
+    expect(result.current.firewallPolicy).toBe('allow-all');
   });
 });
 

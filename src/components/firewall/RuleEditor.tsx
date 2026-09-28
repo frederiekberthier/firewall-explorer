@@ -13,6 +13,10 @@ import { buildMikrotikConfig } from '@/lib/mikrotikExport';
 import { ScenarioSelfTest } from './ScenarioSelfTest';
 import { AddressListManager } from './AddressListManager';
 
+// Source/destination "any": no restriction, i.e. an empty field in MikroTik.
+const ANY = 'ANY';
+const ANY_LABEL = 'Alles (ANY)';
+
 const CONNECTION_STATE_OPTIONS: { value: ConnState; label: string; hint: string }[] = [
   { value: 'new', label: 'New', hint: 'eerste pakket van een nieuwe verbinding' },
   { value: 'established', label: 'Established', hint: 'antwoord op een bestaande verbinding' },
@@ -48,8 +52,10 @@ export function RuleEditor({
   onAddAddressList,
   onDeleteAddressList
 }: RuleEditorProps) {
-  const [sourceId, setSourceId] = useState<string>('');
-  const [destinationId, setDestinationId] = useState<string>('');
+  // "Alles (ANY)" is the default, like an empty field in a MikroTik rule:
+  // no source/destination restriction unless the student picks one.
+  const [sourceId, setSourceId] = useState<string>(ANY);
+  const [destinationId, setDestinationId] = useState<string>(ANY);
   const [connectionStates, setConnectionStates] = useState<ConnState[]>(['new']);
   const [action, setAction] = useState<RuleAction>('allow');
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -87,8 +93,8 @@ export function RuleEditor({
       action
     });
 
-    setSourceId('');
-    setDestinationId('');
+    setSourceId(ANY);
+    setDestinationId(ANY);
   };
 
   const getNodeName = (id: string) => getNodeNameForNodes(nodes, id, addressLists);
@@ -164,16 +170,16 @@ export function RuleEditor({
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-popover border border-border">
-              <SelectItem value="block-all">
-                <div className="flex items-center gap-2">
-                  <ShieldX className="w-4 h-4 text-destructive" />
-                  <span>Block All (Default Deny) - Veiliger</span>
-                </div>
-              </SelectItem>
               <SelectItem value="allow-all">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-green-600" />
                   <span>Allow All (Default Allow) - Minder veilig</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="block-all">
+                <div className="flex items-center gap-2">
+                  <ShieldX className="w-4 h-4 text-destructive" />
+                  <span>Block All (Default Deny) - Veiliger</span>
                 </div>
               </SelectItem>
             </SelectContent>
@@ -234,12 +240,11 @@ export function RuleEditor({
             <div className="space-y-2">
               <label htmlFor={`${fieldId}-source`} className="text-sm font-medium">Bron</label>
               <Select value={sourceId} onValueChange={setSourceId}>
-                <SelectTrigger id={`${fieldId}-source`}>
-                  <SelectValue placeholder="Selecteer..." />
+                <SelectTrigger id={`${fieldId}-source`} aria-describedby={`${fieldId}-any-hint`}>
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-popover border border-border">
-                  <SelectItem value="ANY">Alles (ANY)</SelectItem>
-                  <SelectItem value="ANY_VLAN">ANY VLAN</SelectItem>
+                  <SelectItem value={ANY}>{ANY_LABEL}</SelectItem>
                   {availableNodes.map(node => (
                     <SelectItem key={node.id} value={node.id}>
                       {node.name}
@@ -257,12 +262,11 @@ export function RuleEditor({
             <div className="space-y-2">
               <label htmlFor={`${fieldId}-destination`} className="text-sm font-medium">Doel</label>
               <Select value={destinationId} onValueChange={setDestinationId}>
-                <SelectTrigger id={`${fieldId}-destination`}>
-                  <SelectValue placeholder="Selecteer..." />
+                <SelectTrigger id={`${fieldId}-destination`} aria-describedby={`${fieldId}-any-hint`}>
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-popover border border-border">
-                  <SelectItem value="ANY">Alles (ANY)</SelectItem>
-                  <SelectItem value="ANY_VLAN">ANY VLAN</SelectItem>
+                  <SelectItem value={ANY}>{ANY_LABEL}</SelectItem>
                   {destinationNodes.filter(n => n.id !== sourceId).map(node => (
                     <SelectItem key={node.id} value={node.id}>
                       {node.type === 'router' ? `${node.name} (beheer)` : node.name}
@@ -302,6 +306,11 @@ export function RuleEditor({
               )}
             </div>
           </div>
+
+          <p id={`${fieldId}-any-hint`} className="text-xs text-muted-foreground -mt-2">
+            <strong>Alles (ANY)</strong> is hetzelfde als het veld <strong>leeg laten</strong> in MikroTik: de regel
+            geldt dan voor elk adres. Wil je enkel een groep (bv. al je VLAN's), maak dan hierboven een adreslijst.
+          </p>
 
           <div className="space-y-2">
             <span id={`${fieldId}-states`} className="text-sm font-medium">Connection state(s)</span>

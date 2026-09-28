@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useNetworkState } from '@/hooks/useNetworkState';
 import { gradeScenario } from './scenarioGrading';
@@ -13,6 +13,9 @@ import {
   intentEndpointOptions,
   staleIntentEndpoints,
   requirementsWithStaleChoices,
+  makeKey,
+  isDraftStarted,
+  createEmptyDraft,
   WizardDraft
 } from './scenarioWizard';
 
@@ -69,8 +72,8 @@ function fullDraft(): WizardDraft {
     ],
     internet: true,
     vlans: [
-      { name: 'DATA', hosts: ['PC 1'] },
-      { name: 'SEC', hosts: ['Camera 1'] }
+      { key: 'v3', name: 'DATA', hosts: ['PC 1'] },
+      { key: 'v4', name: 'SEC', hosts: ['Camera 1'] }
     ],
     intentChoices: {
       k1: { from: 'DATA', to: 'Internet', expect: 'allow' },
@@ -94,19 +97,19 @@ describe('availableNodeNames', () => {
 describe('findTopologyNameIssues', () => {
   it('flags a case-insensitive duplicate name across VLANs', () => {
     const issues = findTopologyNameIssues([
-      { name: 'DATA', hosts: ['PC 1'] },
-      { name: 'data', hosts: [] }
+      { key: 'v5', name: 'DATA', hosts: ['PC 1'] },
+      { key: 'v6', name: 'data', hosts: [] }
     ]);
     expect(issues.some(i => i.includes('data'))).toBe(true);
   });
 
   it('flags reserved names', () => {
-    const issues = findTopologyNameIssues([{ name: 'Internet', hosts: [] }]);
+    const issues = findTopologyNameIssues([{ key: 'v7', name: 'Internet', hosts: [] }]);
     expect(issues.some(i => i.includes('gereserveerde naam'))).toBe(true);
   });
 
   it('reports nothing for a clean topology', () => {
-    expect(findTopologyNameIssues([{ name: 'DATA', hosts: ['PC 1', 'PC 2'] }])).toHaveLength(0);
+    expect(findTopologyNameIssues([{ key: 'v8', name: 'DATA', hosts: ['PC 1', 'PC 2'] }])).toHaveLength(0);
   });
 });
 
@@ -246,7 +249,7 @@ describe('wizard names with surrounding whitespace', () => {
     difficulty: 'basis',
     requirements: [{ key: 'k1', text: 'DATA mag naar internet' }],
     internet: true,
-    vlans: [{ name: 'DATA ', hosts: [' PC 1 '] }],
+    vlans: [{ key: 'v9', name: 'DATA ', hosts: [' PC 1 '] }],
     intentChoices: { k1: { from: 'DATA ', to: 'Internet', expect: 'drop', state: 'new' } }
   });
 
@@ -276,7 +279,7 @@ describe('stale intent choices after editing the topology', () => {
     title: 'T', markdown: 'M', difficulty: 'basis',
     requirements: [{ key: 'k1', text: 'DATA mag naar internet' }, { key: 'k2', text: 'SEC niet naar DATA' }],
     internet: true,
-    vlans: [{ name: 'DATA', hosts: [] }, { name: 'SEC', hosts: [] }],
+    vlans: [{ key: 'v10', name: 'DATA', hosts: [] }, { key: 'v11', name: 'SEC', hosts: [] }],
     intentChoices: {
       k1: { from: 'DATA', to: 'Internet', expect: 'allow', state: 'new' },
       k2: { from: 'SEC', to: 'DATA', expect: 'drop', state: 'new' }
@@ -288,7 +291,7 @@ describe('stale intent choices after editing the topology', () => {
   });
 
   it('flags choices that point at a renamed VLAN', () => {
-    const draft = { ...base(), vlans: [{ name: 'KANTOOR', hosts: [] }, { name: 'SEC', hosts: [] }] };
+    const draft = { ...base(), vlans: [{ key: 'v10', name: 'KANTOOR', hosts: [] }, { key: 'v11', name: 'SEC', hosts: [] }] };
     expect(staleIntentEndpoints(draft, draft.intentChoices.k1)).toEqual(['DATA']);
     expect(staleIntentEndpoints(draft, draft.intentChoices.k2)).toEqual(['DATA']);
     expect(requirementsWithStaleChoices(draft)).toEqual(['k1', 'k2']);
@@ -309,6 +312,25 @@ describe('stale intent choices after editing the topology', () => {
     const draft = { ...base(), requirements: [...base().requirements, { key: 'k3', text: '  ' }], internet: false };
     draft.intentChoices = { ...draft.intentChoices, k3: { from: 'Internet', to: 'DATA', expect: 'drop' } };
     expect(requirementsWithStaleChoices(draft)).toEqual(['k1']);
+  });
+});
+
+describe('makeKey', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('works without crypto.randomUUID (e.g. the dev server opened via its LAN IP over http)', () => {
+    vi.stubGlobal('crypto', {});
+    const keys = new Set(Array.from({ length: 50 }, () => makeKey()));
+    expect(keys.size).toBe(50);
+  });
+});
+
+describe('isDraftStarted', () => {
+  it('is false for an empty draft and true as soon as something is entered', () => {
+    expect(isDraftStarted(createEmptyDraft())).toBe(false);
+    expect(isDraftStarted({ ...createEmptyDraft(), title: 'Kantoor' })).toBe(true);
+    expect(isDraftStarted({ ...createEmptyDraft(), internet: true })).toBe(true);
+    expect(isDraftStarted({ ...createEmptyDraft(), requirements: [{ key: 'k', text: '  ' }] })).toBe(false);
   });
 });
 

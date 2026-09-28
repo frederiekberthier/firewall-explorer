@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo, Dispatch, SetStateAction } from 'react';
 import { Scenario } from '@/types/scenario';
 import {
   WizardDraft,
-  createEmptyDraft,
+  WizardSession,
+  WizardStep,
   buildScenarioFromDraft,
   availableNodeNames,
   requirementsWithStaleChoices,
@@ -18,12 +19,16 @@ import { cn } from '@/lib/utils';
 import { Download, ArrowLeft, ArrowRight, X } from 'lucide-react';
 
 interface ScenarioWizardProps {
+  /** Owned by the parent, so the draft survives closing the dialog. */
+  session: WizardSession;
+  onSessionChange: Dispatch<SetStateAction<WizardSession>>;
   onLoadScenario: (scenario: Scenario) => void;
+  /** Back to the scenario list; the draft is kept. */
   onCancel: () => void;
 }
 
 const STEP_LABELS = ['Uitleg', 'Vereisten', 'Topologie', 'Intents'] as const;
-type Step = 1 | 2 | 3 | 4;
+type Step = WizardStep;
 
 function downloadScenarioAsJson(scenario: Scenario) {
   const blob = new Blob([JSON.stringify(scenario, null, 2)], { type: 'application/json' });
@@ -37,12 +42,12 @@ function downloadScenarioAsJson(scenario: Scenario) {
   URL.revokeObjectURL(url);
 }
 
-export function ScenarioWizard({ onLoadScenario, onCancel }: ScenarioWizardProps) {
-  const [draft, setDraft] = useState<WizardDraft>(createEmptyDraft());
-  const [step, setStep] = useState<Step>(1);
-  const [maxReachedStep, setMaxReachedStep] = useState<Step>(1);
+export function ScenarioWizard({ session, onSessionChange, onLoadScenario, onCancel }: ScenarioWizardProps) {
+  const { draft, step, maxReachedStep } = session;
+  const setStep = (next: Step) => onSessionChange(prev => ({ ...prev, step: next }));
 
-  const updateDraft = (updates: Partial<WizardDraft>) => setDraft(prev => ({ ...prev, ...updates }));
+  const updateDraft = (updates: Partial<WizardDraft>) =>
+    onSessionChange(prev => ({ ...prev, draft: { ...prev.draft, ...updates } }));
 
   const canAdvanceFrom: Record<Step, boolean> = useMemo(() => {
     const hasFilledRequirement = draft.requirements.some(r => r.text.trim() !== '');
@@ -72,11 +77,10 @@ export function ScenarioWizard({ onLoadScenario, onCancel }: ScenarioWizardProps
   const goNext = () => {
     if (!canAdvanceFrom[step]) return;
     const next = Math.min(step + 1, 4) as Step;
-    setStep(next);
-    setMaxReachedStep(prev => (next > prev ? next : prev));
+    onSessionChange(prev => ({ ...prev, step: next, maxReachedStep: next > prev.maxReachedStep ? next : prev.maxReachedStep }));
   };
 
-  const goBack = () => setStep(prev => Math.max(prev - 1, 1) as Step);
+  const goBack = () => setStep(Math.max(step - 1, 1) as Step);
 
   const handleLoad = () => {
     onLoadScenario(buildScenarioFromDraft(draft));
@@ -128,7 +132,7 @@ export function ScenarioWizard({ onLoadScenario, onCancel }: ScenarioWizardProps
           {step === 1 ? (
             <>
               <X className="w-4 h-4 mr-2" />
-              Annuleren
+              Terug naar de lijst
             </>
           ) : (
             <>

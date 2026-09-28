@@ -1,4 +1,4 @@
-import { WizardDraft } from '@/lib/scenarioWizard';
+import { WizardDraft, makeKey } from '@/lib/scenarioWizard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Plus, Trash2 } from 'lucide-react';
@@ -11,7 +11,7 @@ interface WizardStepRequirementsProps {
 export function WizardStepRequirements({ draft, onChange }: WizardStepRequirementsProps) {
   const addRequirement = () => {
     onChange({
-      requirements: [...draft.requirements, { key: crypto.randomUUID(), text: '' }]
+      requirements: [...draft.requirements, { key: makeKey(), text: '' }]
     });
   };
 

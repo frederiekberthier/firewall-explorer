@@ -72,4 +72,34 @@ describe('WizardStepTopology', () => {
 
     expect(latest!.vlans[0].hosts).toEqual([]);
   });
+
+  it('keeps typed host text with its own VLAN when another VLAN is deleted', () => {
+    let latest: WizardDraft | null = null;
+    render(<Harness onDraft={(d) => { latest = d; }} />);
+
+    fireEvent.click(screen.getByText('VLAN toevoegen'));
+    fireEvent.click(screen.getByText('VLAN toevoegen'));
+    const [firstName, secondName] = screen.getAllByPlaceholderText('VLAN-naam, bv. DATA');
+    fireEvent.change(firstName, { target: { value: 'DATA' } });
+    fireEvent.change(secondName, { target: { value: 'SEC' } });
+    // Typed, not yet added, in the second VLAN.
+    fireEvent.change(screen.getAllByPlaceholderText('Hostnaam toevoegen, bv. PC 1')[1], { target: { value: 'Camera 1' } });
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'VLAN verwijderen' })[0]);
+
+    expect(latest!.vlans.map(v => v.name)).toEqual(['SEC']);
+    // Before the fix the text was keyed by position and vanished here.
+    expect(screen.getByPlaceholderText('Hostnaam toevoegen, bv. PC 1')).toHaveValue('Camera 1');
+  });
+
+  it('gives every new VLAN a unique key', () => {
+    let latest: WizardDraft | null = null;
+    render(<Harness onDraft={(d) => { latest = d; }} />);
+    fireEvent.click(screen.getByText('VLAN toevoegen'));
+    fireEvent.click(screen.getByText('VLAN toevoegen'));
+    const keys = latest!.vlans.map(v => v.key);
+    expect(new Set(keys).size).toBe(2);
+    keys.forEach(k => expect(k).toBeTruthy());
+  });
 });
+

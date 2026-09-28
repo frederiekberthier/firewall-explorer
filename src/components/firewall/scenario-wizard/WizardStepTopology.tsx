@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { WizardDraft, WizardVlan, findTopologyNameIssues } from '@/lib/scenarioWizard';
+import { WizardDraft, WizardVlan, findTopologyNameIssues, makeKey } from '@/lib/scenarioWizard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -13,30 +13,33 @@ interface WizardStepTopologyProps {
 }
 
 export function WizardStepTopology({ draft, onChange }: WizardStepTopologyProps) {
-  const [newHostByVlan, setNewHostByVlan] = useState<Record<number, string>>({});
+  // Host name being typed, per VLAN — keyed by the VLAN's stable key, not its
+  // position, so deleting a VLAN does not move typed text to the next one.
+  const [newHostByVlan, setNewHostByVlan] = useState<Record<string, string>>({});
 
   const updateVlans = (vlans: WizardVlan[]) => onChange({ vlans });
 
-  const addVlan = () => updateVlans([...draft.vlans, { name: '', hosts: [] }]);
+  const addVlan = () => updateVlans([...draft.vlans, { key: makeKey(), name: '', hosts: [] }]);
 
-  const updateVlanName = (index: number, name: string) => {
-    updateVlans(draft.vlans.map((v, i) => (i === index ? { ...v, name } : v)));
+  const updateVlanName = (vlanKey: string, name: string) => {
+    updateVlans(draft.vlans.map(v => (v.key === vlanKey ? { ...v, name } : v)));
   };
 
-  const removeVlan = (index: number) => {
-    updateVlans(draft.vlans.filter((_, i) => i !== index));
+  const removeVlan = (vlanKey: string) => {
+    updateVlans(draft.vlans.filter(v => v.key !== vlanKey));
+    setNewHostByVlan(({ [vlanKey]: _removed, ...rest }) => rest);
   };
 
-  const addHost = (vlanIndex: number) => {
-    const hostName = (newHostByVlan[vlanIndex] ?? '').trim();
+  const addHost = (vlanKey: string) => {
+    const hostName = (newHostByVlan[vlanKey] ?? '').trim();
     if (!hostName) return;
-    updateVlans(draft.vlans.map((v, i) => (i === vlanIndex ? { ...v, hosts: [...v.hosts, hostName] } : v)));
-    setNewHostByVlan(prev => ({ ...prev, [vlanIndex]: '' }));
+    updateVlans(draft.vlans.map(v => (v.key === vlanKey ? { ...v, hosts: [...v.hosts, hostName] } : v)));
+    setNewHostByVlan(prev => ({ ...prev, [vlanKey]: '' }));
   };
 
-  const removeHost = (vlanIndex: number, hostIndex: number) => {
-    updateVlans(draft.vlans.map((v, i) =>
-      i === vlanIndex ? { ...v, hosts: v.hosts.filter((_, hi) => hi !== hostIndex) } : v
+  const removeHost = (vlanKey: string, hostIndex: number) => {
+    updateVlans(draft.vlans.map(v =>
+      v.key === vlanKey ? { ...v, hosts: v.hosts.filter((_, hi) => hi !== hostIndex) } : v
     ));
   };
 
@@ -59,20 +62,20 @@ export function WizardStepTopology({ draft, onChange }: WizardStepTopologyProps)
       </label>
 
       <div className="space-y-3">
-        {draft.vlans.map((vlan, vlanIndex) => (
-          <Card key={vlanIndex}>
+        {draft.vlans.map(vlan => (
+          <Card key={vlan.key}>
             <CardHeader className="flex flex-row items-center gap-2 space-y-0 py-3">
               <Network className="w-4 h-4 text-muted-foreground flex-shrink-0" />
               <Input
                 placeholder="VLAN-naam, bv. DATA"
                 value={vlan.name}
-                onChange={(e) => updateVlanName(vlanIndex, e.target.value)}
+                onChange={(e) => updateVlanName(vlan.key, e.target.value)}
                 className="flex-1"
               />
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => removeVlan(vlanIndex)}
+                onClick={() => removeVlan(vlan.key)}
                 aria-label="VLAN verwijderen"
                 className="flex-shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
               >
@@ -85,7 +88,7 @@ export function WizardStepTopology({ draft, onChange }: WizardStepTopologyProps)
                   <Badge key={hostIndex} variant="outline" className="flex items-center gap-1 pr-1">
                     {host}
                     <button
-                      onClick={() => removeHost(vlanIndex, hostIndex)}
+                      onClick={() => removeHost(vlan.key, hostIndex)}
                       aria-label={`${host} verwijderen`}
                       className="hover:bg-muted rounded"
                     >
@@ -97,17 +100,17 @@ export function WizardStepTopology({ draft, onChange }: WizardStepTopologyProps)
               <div className="flex items-center gap-2">
                 <Input
                   placeholder="Hostnaam toevoegen, bv. PC 1"
-                  value={newHostByVlan[vlanIndex] ?? ''}
-                  onChange={(e) => setNewHostByVlan(prev => ({ ...prev, [vlanIndex]: e.target.value }))}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addHost(vlanIndex); } }}
+                  value={newHostByVlan[vlan.key] ?? ''}
+                  onChange={(e) => setNewHostByVlan(prev => ({ ...prev, [vlan.key]: e.target.value }))}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addHost(vlan.key); } }}
                   // Committing only on Enter/click-+ meant a typed-but-not-
                   // submitted host name silently vanished if you moved on
                   // (e.g. clicked "Volgende") without noticing — add it on
                   // blur too, so leaving the field never loses text.
-                  onBlur={() => addHost(vlanIndex)}
+                  onBlur={() => addHost(vlan.key)}
                   className="h-8 text-sm"
                 />
-                <Button variant="outline" size="sm" onClick={() => addHost(vlanIndex)} aria-label="Host toevoegen">
+                <Button variant="outline" size="sm" onClick={() => addHost(vlan.key)} aria-label="Host toevoegen">
                   <Plus className="w-3.5 h-3.5" />
                 </Button>
               </div>

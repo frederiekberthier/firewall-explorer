@@ -251,3 +251,44 @@ describe('summarizeRequirements', () => {
   });
 });
 
+describe('runIntent skips traffic that never passes the firewall', () => {
+  const pc1: NetworkNode = { id: 'pc1', type: 'host', name: 'PC 1', x: 0, y: 0, parentId: data.id };
+  const pc2: NetworkNode = { id: 'pc2', type: 'host', name: 'PC 2', x: 0, y: 0, parentId: data.id };
+  const cam: NetworkNode = { id: 'cam', type: 'host', name: 'Camera', x: 0, y: 0, parentId: sec.id };
+  const withHosts = [...nodes, pc1, pc2, cam];
+  const intent = (from: string, to: string, expect: 'allow' | 'drop') =>
+    ({ id: 'w', requirementId: 'R1', description: '', from, to, expect, state: 'new' as const });
+
+  it('"every host may not reach every host" only tests hosts in different VLANs', () => {
+    // Blocking PC 1/PC 2 -> Camera and back is enough; PC 1 <-> PC 2 is switched inside DATA.
+    const result = runIntent(intent('ANY_HOST', 'ANY_HOST', 'drop'), withHosts, [], 'block-all');
+    expect(result.pass).toBe(true);
+    expect(result.reason).toContain('Getest voor 4 combinatie(s)');
+    expect(result.reason).toContain('2 combinatie(s) binnen hetzelfde segment overgeslagen');
+  });
+
+  it('does not test a VLAN against a host inside that same VLAN', () => {
+    // Allow DATA -> anything: without the fix, DATA -> PC 1 (same VLAN) had to be allowed by a rule too.
+    const rules = [rule({ id: 'r1', sourceId: data.id, destinationId: 'ANY', connectionStates: ['new'], order: 0 })];
+    const result = runIntent(intent('DATA', 'ANY_HOST', 'allow'), withHosts, rules, 'block-all');
+    expect(result.reason).not.toContain('PC 1');
+    expect(result.reason).not.toContain('PC 2');
+  });
+
+  it('marks an intent that only covers same-VLAN traffic as skipped, not as failed', () => {
+    const result = runIntent(intent('PC 1', 'PC 2', 'drop'), withHosts, [], 'allow-all');
+    expect(result.skipped).toBe(true);
+    expect(result.reason).toContain('gaat via de switch en niet door de firewall');
+
+    const scenario: Scenario = {
+      meta: { id: 's', title: 'S' },
+      brief: { markdown: '', requirements: [{ id: 'R1', text: 'PC 1 mag niet naar PC 2' }] },
+      topology: { vlans: [{ name: 'DATA', hosts: ['PC 1', 'PC 2'] }] },
+      intents: [intent('PC 1', 'PC 2', 'drop')]
+    };
+    const [summary] = summarizeRequirements(scenario, gradeScenario(scenario, withHosts, [], 'allow-all'));
+    expect(summary.status).toBe('untested');
+    expect(summary.skipped).toHaveLength(1);
+  });
+});
+

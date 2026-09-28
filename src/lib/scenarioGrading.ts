@@ -6,6 +6,12 @@ export interface IntentResult {
   intent: ScenarioIntent;
   pass: boolean;
   reason: string;
+  /**
+   * The intent only covers traffic that never passes the firewall (e.g. two
+   * hosts in the same VLAN): nothing to test, so it counts neither as passed
+   * nor as failed — it points at the scenario, not at the student's rules.
+   */
+  skipped?: boolean;
 }
 
 export type LintSeverity = 'warning' | 'suggestion';
@@ -35,6 +41,21 @@ export type IntentWildcardToken = typeof INTENT_WILDCARD_TOKENS[number];
 
 export function isIntentWildcardToken(value: string): value is IntentWildcardToken {
   return (INTENT_WILDCARD_TOKENS as readonly string[]).includes(value);
+}
+
+/**
+ * The L2 segment a node belongs to: a VLAN is its own segment, a host belongs
+ * to its VLAN, hosts attached straight to the router share one segment. The
+ * router and Internet are separate. Two nodes in the same segment talk
+ * without passing the firewall.
+ */
+function segmentOf(node: NetworkNode, nodes: NetworkNode[]): string {
+  if (node.type === 'vlan') return node.id;
+  if (node.type === 'host') {
+    const parent = nodes.find(n => n.id === node.parentId);
+    return parent?.type === 'vlan' ? parent.id : `direct:${node.parentId ?? ''}`;
+  }
+  return node.id;
 }
 
 /** Resolves an intent's `from`/`to` to the concrete node(s) it refers to. */
@@ -171,13 +192,29 @@ export function runIntent(
   }
 
   const pairs: Array<[NetworkNode, NetworkNode]> = [];
+  let sameSegmentPairs = 0;
   for (const fromNode of fromNodes) {
     for (const toNode of toNodes) {
-      if (fromNode.id !== toNode.id) pairs.push([fromNode, toNode]);
+      if (fromNode.id === toNode.id) continue;
+      // Traffic within one L2 segment is switched, not routed: the firewall
+      // never sees it, so there is nothing for the rules to allow or block.
+      if (segmentOf(fromNode, nodes) === segmentOf(toNode, nodes)) {
+        sameSegmentPairs++;
+        continue;
+      }
+      pairs.push([fromNode, toNode]);
     }
   }
 
   if (pairs.length === 0) {
+    if (sameSegmentPairs > 0) {
+      return {
+        intent,
+        pass: false,
+        skipped: true,
+        reason: `"${intent.from}" → "${intent.to}" is verkeer binnen hetzelfde netwerksegment (bv. twee hosts in dezelfde VLAN). Dat gaat via de switch en niet door de firewall, dus firewallregels hebben er geen invloed op.`
+      };
+    }
     return {
       intent,
       pass: false,
@@ -201,7 +238,8 @@ export function runIntent(
     intent,
     pass: true,
     reason: pairs.length > 1
-      ? `Getest voor ${pairs.length} combinatie(s) (${fromNodes.map(n => n.name).join(', ')} → ${toNodes.map(n => n.name).join(', ')}), telkens in orde.`
+      ? `Getest voor ${pairs.length} combinatie(s) (${fromNodes.map(n => n.name).join(', ')} → ${toNodes.map(n => n.name).join(', ')}), telkens in orde.` +
+        (sameSegmentPairs > 0 ? ` ${sameSegmentPairs} combinatie(s) binnen hetzelfde segment overgeslagen: dat verkeer gaat niet door de firewall.` : '')
       : lastReason
   };
 }
@@ -300,6 +338,8 @@ export interface RequirementSummary {
   results: IntentResult[];
   /** The results that failed, each with its own reason. */
   failing: IntentResult[];
+  /** Checks that were skipped because the firewall never sees that traffic. */
+  skipped: IntentResult[];
 }
 
 /**
@@ -310,10 +350,12 @@ export interface RequirementSummary {
  */
 export function summarizeRequirements(scenario: Scenario, report: ScenarioReport): RequirementSummary[] {
   return scenario.brief.requirements.map(requirement => {
-    const results = report.intentResults.filter(r => r.intent.requirementId === requirement.id);
+    // Skipped intents (traffic the firewall never sees) are not counted.
+    const results = report.intentResults.filter(r => r.intent.requirementId === requirement.id && !r.skipped);
     const failing = results.filter(r => !r.pass);
+    const skipped = report.intentResults.filter(r => r.intent.requirementId === requirement.id && r.skipped);
     const status: RequirementStatus = results.length === 0 ? 'untested' : failing.length === 0 ? 'pass' : 'fail';
-    return { requirement, status, results, failing };
+    return { requirement, status, results, failing, skipped };
   });
 }
 

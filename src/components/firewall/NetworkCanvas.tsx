@@ -156,7 +156,7 @@ export function NetworkCanvas({
       // with touch and pen; touch-none stops the browser from scrolling the
       // page instead. A touch pointer is implicitly captured by the element it
       // started on, so its move/up events still bubble up to this handler.
-      className={`relative w-full h-[60vh] min-h-[360px] md:h-[700px] touch-none bg-gradient-to-br from-background to-muted/30 rounded-xl border border-border overflow-hidden ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+      className={`relative w-full h-[60vh] min-h-[360px] md:h-[700px] touch-none bg-card rounded-lg border border-border shadow-soft overflow-hidden ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
       onClick={() => {
         if (!pannedRef.current) onSelectNode(null);
         pannedRef.current = false;

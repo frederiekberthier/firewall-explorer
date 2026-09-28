@@ -440,7 +440,7 @@ export function RuleEditor({
                     <Badge
                       className={cn(
                         rule.action === 'allow'
-                          ? 'bg-primary/20 text-primary border-primary/30'
+                          ? 'bg-success-soft text-success border-success/30'
                           : 'bg-destructive/20 text-destructive border-destructive/30'
                       )}
                     >

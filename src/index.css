@@ -1,109 +1,94 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/* Design system, in line with howest.be/iot and the other Graduaat IoT apps:
+   dark bars (#1C1D1E), Howest light blue (#44C8F5) as accent, a light blue
+   background, rounded Nunito headings and Open Sans body text.
+   All colours are HSL (used as hsl(var(--token)) in tailwind.config.ts). */
 
 @layer base {
   :root {
-    --background: 209 40% 96%;
-    --foreground: 222 47% 11%;
+    --background: 195 57% 97%;      /* #f4fafc */
+    --foreground: 210 10% 23%;      /* #343a40 */
 
-    --card: 210 40% 98%;
-    --card-foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 210 10% 23%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 10% 23%;
 
-    --popover: 214 31% 91%;
-    --popover-foreground: 222 47% 11%;
+    /* Howest light blue for fills; dark text on top of it. */
+    --primary: 195 90% 61%;         /* #44c8f5 */
+    --primary-foreground: 210 3% 11%;
+    --primary-hover: 195 81% 52%;   /* #22b5e8 */
 
-    --primary: 200 98% 39%;
-    --primary-foreground: 204 100% 97%;
+    --secondary: 198 87% 94%;       /* #e3f5fd, "brand soft" */
+    --secondary-foreground: 210 3% 11%;
 
-    --secondary: 215 24% 26%;
-    --secondary-foreground: 210 40% 98%;
+    --muted: 203 29% 95%;           /* #edf2f5 */
+    --muted-foreground: 209 11% 42%;/* #5f6b76 */
 
-    --muted: 215 20% 65%;
-    --muted-foreground: 222 47% 11%;
+    --accent: 198 87% 94%;
+    --accent-foreground: 210 3% 11%;
 
-    --accent: 210 40% 98%;
-    --accent-foreground: 215 19% 34%;
+    --destructive: 354 70% 46%;     /* #c82333 */
+    --destructive-foreground: 0 0% 100%;
 
-    --destructive: 0 72% 50%;
-    --destructive-foreground: 0 85% 97%;
+    --success: 177 100% 23%;        /* #00756f */
+    --success-soft: 174 48% 92%;
 
-    --border: 212 26% 83%;
-    --input: 212 26% 83%;
-    --ring: 200 98% 39%;
+    --border: 199 33% 89%;          /* #d9e6ec */
+    --input: 199 33% 89%;
+    --ring: 195 90% 61%;
 
-    --radius: 0.5rem;
+    --heading: 210 3% 11%;          /* #1c1d1e */
+    --link: 202 100% 38%;           /* #0079c0 */
 
-    --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+    --bar: 210 3% 11%;              /* header and footer */
+    --bar-foreground: 0 0% 100%;
+    --bar-muted: 210 11% 75%;
 
-    --font-serif: 'Lora', ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+    --radius: 1rem;
+    --shadow-soft: 0 1px 2px rgb(28 29 30 / 0.04), 0 4px 16px rgb(28 29 30 / 0.06);
 
-    --font-mono: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-
-    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-
-    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-
-    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-
-    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-
-    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 2px 4px -1px hsl(0 0% 0% / 0.1);
-
-    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 4px 6px -1px hsl(0 0% 0% / 0.1);
-
-    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 8px 10px -1px hsl(0 0% 0% / 0.1);
-
-    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
-
-    --tracking-normal: 0em;
-
-    --spacing: 0.25rem;
+    color-scheme: light dark;
   }
 
-  .dark {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: 210 10% 8%;     /* #121416 */
+      --foreground: 210 4% 90%;
 
-    --card: 217 32% 17%;
-    --card-foreground: 210 40% 98%;
+      --card: 210 3% 11%;
+      --card-foreground: 210 4% 90%;
+      --popover: 210 3% 11%;
+      --popover-foreground: 210 4% 90%;
 
-    --popover: 215 24% 26%;
-    --popover-foreground: 210 40% 98%;
+      --secondary: 197 58% 15%;
+      --secondary-foreground: 0 0% 100%;
 
-    --primary: 198 93% 59%;
-    --primary-foreground: 204 80% 15%;
+      --muted: 210 9% 18%;
+      --muted-foreground: 210 9% 68%;
 
-    --secondary: 212 26% 83%;
-    --secondary-foreground: 228 84% 4%;
+      --accent: 197 58% 15%;
+      --accent-foreground: 0 0% 100%;
 
-    --muted: 215 16% 46%;
-    --muted-foreground: 210 40% 98%;
+      --destructive: 355 100% 74%;  /* #ff7b86 */
+      --destructive-foreground: 210 3% 11%;
 
-    --accent: 228 84% 4%;
-    --accent-foreground: 215 20% 65%;
+      --success: 176 56% 52%;
+      --success-soft: 176 45% 13%;
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 85% 97%;
+      --border: 210 9% 21%;
+      --input: 210 9% 21%;
 
-    --border: 215 19% 34%;
-    --input: 215 19% 34%;
-    --ring: 198 93% 59%;
-    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 2px 4px -1px hsl(0 0% 0% / 0.1);
-    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 4px 6px -1px hsl(0 0% 0% / 0.1);
-    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 8px 10px -1px hsl(0 0% 0% / 0.1);
-    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+      --heading: 0 0% 100%;
+      --link: 195 90% 61%;
+
+      --bar: 210 8% 5%;
+
+      --shadow-soft: none;
+    }
   }
 }
 
@@ -113,6 +98,22 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans leading-relaxed;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-heading font-extrabold text-heading leading-tight;
+  }
+
+  a {
+    @apply text-link;
+  }
+
+  /* A clearly visible focus ring in the accent colour, as in the other apps. */
+  :focus-visible {
+    outline: 3px solid hsl(var(--ring));
+    outline-offset: 2px;
   }
 }

@@ -35,7 +35,7 @@ interface ConnectionEntry {
 
 const CONNECTION_STATUS: Record<ConnectionStatus, { label: string; className: string }> = {
   pending: { label: 'wacht op antwoord', className: '' },
-  established: { label: 'established', className: 'border-primary/40 text-primary' },
+  established: { label: 'established', className: 'border-success/40 bg-success-soft text-success' },
   'reply-blocked': { label: 'antwoord geblokkeerd', className: 'border-destructive/40 text-destructive' },
   'followup-blocked': { label: 'vervolg geblokkeerd', className: 'border-destructive/40 text-destructive' }
 };
@@ -86,7 +86,7 @@ function CheckList({ title, checks, shown }: { title: string; checks: RuleCheckR
                 <Network className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
               ) : check.matched ? (
                 check.action === 'allow' ? (
-                  <ShieldCheck className="w-4 h-4 text-primary mt-0.5" />
+                  <ShieldCheck className="w-4 h-4 text-success mt-0.5" />
                 ) : check.action === 'reject' ? (
                   <ShieldAlert className="w-4 h-4 text-destructive mt-0.5" />
                 ) : (
@@ -412,7 +412,7 @@ export function SimulationPanel({
                   <div
                     className={cn(
                       "flex items-center gap-2 px-3 py-2 rounded-lg",
-                      phase !== 'complete' && stage === st ? "bg-primary/20 text-primary" : "bg-muted"
+                      phase !== 'complete' && stage === st ? "bg-primary text-primary-foreground" : "bg-muted"
                     )}
                     aria-current={phase !== 'complete' && stage === st ? 'step' : undefined}
                   >

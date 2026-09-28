@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { NetworkNode, FirewallRule, FirewallPolicy, AddressList } from '@/types/firewall';
 import { Scenario } from '@/types/scenario';
-import { gradeScenario, IntentResult, LintFinding } from '@/lib/scenarioGrading';
+import { gradeScenario, summarizeRequirements, RequirementSummary, LintFinding } from '@/lib/scenarioGrading';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircle2, XCircle, Circle, AlertTriangle, Info, ClipboardCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -14,25 +14,38 @@ interface ScenarioSelfTestProps {
   addressLists?: AddressList[];
 }
 
-function RequirementRow({ text, requirementId, result }: { text: string; requirementId: string; result?: IntentResult }) {
+const STATUS_LABEL = { pass: 'voldaan', fail: 'niet voldaan', untested: 'niet automatisch getest' } as const;
+
+function RequirementRow({ summary }: { summary: RequirementSummary }) {
+  const { requirement, status, results, failing } = summary;
   return (
-    <li className="space-y-0.5">
+    <li className="space-y-0.5" data-status={status}>
       <div className="flex items-start gap-2 text-sm">
-        {!result ? (
-          <Circle className="w-4 h-4 mt-0.5 text-muted-foreground flex-shrink-0" />
-        ) : result.pass ? (
-          <CheckCircle2 className="w-4 h-4 mt-0.5 text-primary flex-shrink-0" />
+        {status === 'untested' ? (
+          <Circle className="w-4 h-4 mt-0.5 text-muted-foreground flex-shrink-0" aria-hidden="true" />
+        ) : status === 'pass' ? (
+          <CheckCircle2 className="w-4 h-4 mt-0.5 text-primary flex-shrink-0" aria-hidden="true" />
         ) : (
-          <XCircle className="w-4 h-4 mt-0.5 text-destructive flex-shrink-0" />
+          <XCircle className="w-4 h-4 mt-0.5 text-destructive flex-shrink-0" aria-hidden="true" />
         )}
         <span>
-          <span className="text-muted-foreground font-mono text-xs mr-1">{requirementId}</span>
-          {text}
+          <span className="sr-only">{STATUS_LABEL[status]}: </span>
+          <span className="text-muted-foreground font-mono text-xs mr-1">{requirement.id}</span>
+          {requirement.text}
+          {results.length > 1 && (
+            <span className="text-xs text-muted-foreground ml-1">
+              ({results.length - failing.length}/{results.length} controles)
+            </span>
+          )}
         </span>
       </div>
-      {result && !result.pass && (
-        <p className="text-xs text-muted-foreground pl-6">{result.reason}</p>
-      )}
+      {/* Every failing check, not just the first one, each with its own reason. */}
+      {failing.map(result => (
+        <p key={result.intent.id} className="text-xs text-muted-foreground pl-6">
+          {results.length > 1 && result.intent.description ? `${result.intent.description}: ` : ''}
+          {result.reason}
+        </p>
+      ))}
     </li>
   );
 }
@@ -58,14 +71,19 @@ export function ScenarioSelfTest({ scenario, nodes, rules, firewallPolicy, addre
     [scenario, nodes, rules, firewallPolicy, addressLists]
   );
 
-  const passCount = report.intentResults.filter(r => r.pass).length;
-  const allPass = report.intentResults.length > 0 && passCount === report.intentResults.length;
+  // Count requirements, not intents, so the badge always matches the list.
+  const summaries = summarizeRequirements(scenario, report);
+  const tested = summaries.filter(s => s.status !== 'untested');
+  const passCount = tested.filter(s => s.status === 'pass').length;
+  const allPass = tested.length > 0 && passCount === tested.length;
 
   return (
     <div
       className={cn(
         'rounded-xl border-2 p-4 space-y-3 transition-colors',
-        allPass ? 'border-primary/40 bg-primary/5' : 'border-destructive/30 bg-destructive/5'
+        tested.length === 0
+          ? 'border-border bg-card' // nothing can be checked automatically: neutral, not "failing"
+          : allPass ? 'border-primary/40 bg-primary/5' : 'border-destructive/30 bg-destructive/5'
       )}
     >
       <div className="flex items-center justify-between">
@@ -73,19 +91,21 @@ export function ScenarioSelfTest({ scenario, nodes, rules, firewallPolicy, addre
           <ClipboardCheck className="w-4 h-4" />
           Zelftest
         </h4>
-        {report.intentResults.length > 0 && (
+        {tested.length > 0 && (
           <Badge className={allPass ? 'bg-primary text-primary-foreground' : 'bg-destructive text-destructive-foreground'}>
-            {passCount}/{report.intentResults.length} voldaan
+            {passCount}/{tested.length} voldaan
           </Badge>
         )}
       </div>
 
+      {tested.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          Dit scenario bevat geen automatische controles — kijk de vereisten zelf na in de simulatie.
+        </p>
+      )}
+
       <ul className="space-y-2">
-        {scenario.brief.requirements.map(req => {
-          const intent = scenario.intents?.find(i => i.requirementId === req.id);
-          const result = intent ? report.intentResults.find(r => r.intent.id === intent.id) : undefined;
-          return <RequirementRow key={req.id} text={req.text} requirementId={req.id} result={result} />;
-        })}
+        {summaries.map(summary => <RequirementRow key={summary.requirement.id} summary={summary} />)}
       </ul>
 
       {report.lintFindings.length > 0 && (

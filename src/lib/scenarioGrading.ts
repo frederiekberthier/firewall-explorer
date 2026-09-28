@@ -1,5 +1,5 @@
 import { NetworkNode, FirewallRule, FirewallPolicy, AddressList } from '@/types/firewall';
-import { Scenario, ScenarioIntent } from '@/types/scenario';
+import { Scenario, ScenarioIntent, ScenarioRequirement } from '@/types/scenario';
 import { checkRules, evaluateConnection } from './firewallEngine';
 
 export interface IntentResult {
@@ -290,3 +290,30 @@ export function gradeScenario(
     lintFindings: lintRules(rules)
   };
 }
+
+export type RequirementStatus = 'pass' | 'fail' | 'untested';
+
+export interface RequirementSummary {
+  requirement: ScenarioRequirement;
+  status: RequirementStatus;
+  /** Every intent result for this requirement (a requirement can have several). */
+  results: IntentResult[];
+  /** The results that failed, each with its own reason. */
+  failing: IntentResult[];
+}
+
+/**
+ * One line per requirement for the self-test: a requirement passes only when
+ * *all* its intents pass, and one without intents is "untested" (nothing to
+ * check automatically) rather than failing. The badge counts these, so it
+ * always agrees with the list.
+ */
+export function summarizeRequirements(scenario: Scenario, report: ScenarioReport): RequirementSummary[] {
+  return scenario.brief.requirements.map(requirement => {
+    const results = report.intentResults.filter(r => r.intent.requirementId === requirement.id);
+    const failing = results.filter(r => !r.pass);
+    const status: RequirementStatus = results.length === 0 ? 'untested' : failing.length === 0 ? 'pass' : 'fail';
+    return { requirement, status, results, failing };
+  });
+}
+

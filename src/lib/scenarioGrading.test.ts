@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { runIntent, lintRules, gradeScenario } from './scenarioGrading';
+import { runIntent, lintRules, gradeScenario, summarizeRequirements } from './scenarioGrading';
 import { NetworkNode, FirewallRule } from '@/types/firewall';
 import { SCENARIOS } from '@/data/scenarios';
+import { Scenario } from '@/types/scenario';
 
 const router: NetworkNode = { id: 'router', type: 'router', name: 'Router', x: 0, y: 0, parentId: null };
 const internet: NetworkNode = { id: 'internet', type: 'internet', name: 'Internet', x: 0, y: 0, parentId: 'router' };
@@ -215,3 +216,38 @@ describe('lintRules and the "Alles (ANY)" option', () => {
     expect(runIntent(intent, nodes, rules, 'block-all').pass).toBe(true);
   });
 });
+
+describe('summarizeRequirements', () => {
+  // R1 has two checks, R2 one, R3 none.
+  const scenario: Scenario = {
+    meta: { id: 's', title: 'S' },
+    brief: { markdown: '', requirements: [{ id: 'R1', text: 'a' }, { id: 'R2', text: 'b' }, { id: 'R3', text: 'c' }] },
+    topology: { internet: true, vlans: [{ name: 'DATA' }, { name: 'SEC' }] },
+    intents: [
+      { id: 'i1', requirementId: 'R1', description: 'DATA niet naar SEC', from: 'DATA', to: 'SEC', expect: 'drop', state: 'new' },
+      { id: 'i2', requirementId: 'R1', description: 'DATA naar Internet', from: 'DATA', to: 'Internet', expect: 'allow', state: 'new' },
+      { id: 'i3', requirementId: 'R2', description: 'SEC niet naar DATA', from: 'SEC', to: 'DATA', expect: 'drop', state: 'new' }
+    ]
+  };
+
+  it('fails a requirement when any of its checks fails, and lists each failing check', () => {
+    // No rules + block-all: every drop passes, the allow (i2) fails.
+    const summaries = summarizeRequirements(scenario, gradeScenario(scenario, nodes, [], 'block-all'));
+    expect(summaries.map(s => s.status)).toEqual(['fail', 'pass', 'untested']);
+    expect(summaries[0].results).toHaveLength(2);
+    expect(summaries[0].failing.map(f => f.intent.id)).toEqual(['i2']);
+  });
+
+  it('passes a requirement only when all of its checks pass', () => {
+    const rules = [rule({ id: 'r1', sourceId: data.id, destinationId: internet.id, connectionStates: ['new'], order: 0 })];
+    const summaries = summarizeRequirements(scenario, gradeScenario(scenario, nodes, rules, 'block-all'));
+    expect(summaries[0].status).toBe('pass'); // state:'new' intents only test the request
+  });
+
+  it('marks every requirement as untested for a scenario without intents', () => {
+    const noIntents = { ...scenario, intents: undefined };
+    const summaries = summarizeRequirements(noIntents, gradeScenario(noIntents, nodes, [], 'block-all'));
+    expect(summaries.every(s => s.status === 'untested')).toBe(true);
+  });
+});
+
